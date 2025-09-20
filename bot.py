@@ -51,7 +51,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def keep_alive():
-    url = "ai-chatbot-a8qt.onrender.com"
+    url = "https://ai-chatbot-a8qt.onrender.com"
     params = {"chat_id": 6244527233, "text": "ping"}
     while True:
         try:
