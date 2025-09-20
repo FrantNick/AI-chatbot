@@ -9,6 +9,14 @@ import os
 import threading
 import time
 import requests
+from flask import Flask
+
+# Tiny Flask webserver for Render
+app_flask = Flask(__name__)
+
+@app_flask.route("/")
+def home():
+    return "Bot is alive!"
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -72,4 +80,9 @@ def main():
     app.run_polling()
 
 if __name__ == "__main__":
-  main()
+    # Run the Telegram bot in a background thread
+    threading.Thread(target=main, daemon=True).start()
+
+    # Run Flask so Render sees an open port
+    port = int(os.environ.get("PORT", 10000))
+    app_flask.run(host="0.0.0.0", port=port)
