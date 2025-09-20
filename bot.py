@@ -15,11 +15,9 @@ from flask import Flask
 BOT_PASSWORD = os.getenv("BOT_PASSWORD")
 AUTHORIZED_USERS = set()
 
+flask_app = Flask(__name__)
 
-# Tiny Flask webserver for Render
-app_flask = Flask(__name__)
-
-@app_flask.route("/")
+@flask_app.route('/')
 def home():
     return "Bot is alive!"
 
@@ -90,20 +88,20 @@ def keep_alive():
             print("Keep-alive failed:", e)
         time.sleep(600)  # wait 10 minutes
 
-def main():
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    flask_app.run(host="0.0.0.0", port=port)
 
+def main():
+    # Start Flask in a thread
+    threading.Thread(target=run_flask, daemon=True).start()
+
+    # Start Telegram bot in main thread
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
-
-    threading.Thread(target=keep_alive, daemon=True).start()
 
     app.run_polling()
 
 if __name__ == "__main__":
-    # Run the Telegram bot in a background thread
-    threading.Thread(target=main, daemon=True).start()
-
-    # Run Flask so Render sees an open port
-    port = int(os.environ.get("PORT", 10000))
-    app_flask.run(host="0.0.0.0", port=port)
+    main()
