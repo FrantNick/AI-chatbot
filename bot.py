@@ -52,19 +52,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply = response.choices[0].message.content
     await update.message.reply_text(reply)
 
-def main():
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
-
-    threading.Thread(target=keep_alive, daemon=True).start()
-
-
-    app.run_polling()
-
-if __name__ == "__main__":
-  main()
 def keep_alive():
     url = "https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     params = {"chat_id": 6244527233, "text": "ping"}
@@ -75,3 +63,16 @@ def keep_alive():
         except Exception as e:
             print("Keep-alive failed:", e)
         time.sleep(600)  # wait 10 minutes
+
+def main():
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+
+    threading.Thread(target=keep_alive, daemon=True).start()
+
+    app.run_polling()
+
+if __name__ == "__main__":
+  main()
