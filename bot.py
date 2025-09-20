@@ -6,6 +6,9 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from openai import OpenAI
 import os
+import threading
+import time
+import requests
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -32,13 +35,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
 
+    # Ignore keep-alive pings
+    if user_message.strip().lower() == "ping":
+        return
+
     response = client.chat.completions.create(
-        model="gpt-4o-mini",  # cheap + good
+        model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_message}
         ]
     )
+    reply = response.choices[0].message.content
+    await update.message.reply_text(reply)
 
     reply = response.choices[0].message.content
     await update.message.reply_text(reply)
@@ -49,7 +58,20 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
+    threading.Thread(target=keep_alive, daemon=True).start()
+
+
     app.run_polling()
 
 if __name__ == "__main__":
   main()
+def keep_alive():
+    url = "https://api.telegram.org/bot8154141968:AAHZTOv6UhMXeRs_8BY3L06ccOSnQo7u8-w/sendMessage"
+    params = {"chat_id": 6244527233, "text": "ping"}
+    while True:
+        try:
+            requests.get(url, params=params)
+            print("Keep-alive ping sent")
+        except Exception as e:
+            print("Keep-alive failed:", e)
+        time.sleep(600)  # wait 10 minutes
