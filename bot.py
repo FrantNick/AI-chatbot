@@ -54,7 +54,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def keep_alive():
-    url = "https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     params = {"chat_id": 6244527233, "text": "ping"}
     while True:
         try:
