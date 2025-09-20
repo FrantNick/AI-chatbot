@@ -11,6 +11,11 @@ import time
 import requests
 from flask import Flask
 
+# Remove when bot is public
+BOT_PASSWORD = os.getenv("BOT_PASSWORD")
+AUTHORIZED_USERS = set()
+
+
 # Tiny Flask webserver for Render
 app_flask = Flask(__name__)
 
@@ -38,15 +43,31 @@ You are "Sofia", a 22-year-old girl from Instagram.
 """
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hey, I'm Sofia 👀. Talk to me like you would in DMs...")
+    user_id = update.message.from_user.id
+
+    if user_id in AUTHORIZED_USERS:
+        await update.message.reply_text("Welcome back 👋 You’re already authorized.")
+    else:
+        await update.message.reply_text("🔒 Please enter the password to access this bot:")
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = update.message.text
+    user_id = update.message.from_user.id
+    user_message = update.message.text.strip()
 
-    # Ignore keep-alive pings
-    if user_message.strip().lower() == "ping":
+    # Check password first
+    if user_id not in AUTHORIZED_USERS:
+        if user_message == BOT_PASSWORD:
+            AUTHORIZED_USERS.add(user_id)
+            await update.message.reply_text("✅ Access granted! You can now chat with me.")
+        else:
+            await update.message.reply_text("❌ Wrong password. Try again.")
         return
 
+    # Ignore keep-alive pings
+    if user_message.lower() == "ping":
+        return
+
+    # Send to OpenAI only if authorized
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
