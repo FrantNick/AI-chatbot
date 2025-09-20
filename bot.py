@@ -66,7 +66,7 @@ def main():
 if __name__ == "__main__":
   main()
 def keep_alive():
-    url = "https://api.telegram.org/bot8154141968:AAHZTOv6UhMXeRs_8BY3L06ccOSnQo7u8-w/sendMessage"
+    url = "https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     params = {"chat_id": 6244527233, "text": "ping"}
     while True:
         try:
