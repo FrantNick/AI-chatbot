@@ -49,9 +49,6 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply = response.choices[0].message.content
     await update.message.reply_text(reply)
 
-    reply = response.choices[0].message.content
-    await update.message.reply_text(reply)
-
 
 def keep_alive():
     url = "ai-chatbot-a8qt.onrender.com"
