@@ -125,15 +125,14 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(reply)
 
 def keep_alive():
-    url = "https://ai-chatbot-a8qt.onrender.com"
-    params = {"chat_id": 6244527233, "text": "ping"}
+    url = "https://ai-chatbot-a8qt.onrender.com/"  # your Render service URL
     while True:
         try:
-            requests.get(url, params=params)
+            requests.get(url)  # just ping your Flask home()
             print("Keep-alive ping sent")
         except Exception as e:
             print("Keep-alive failed:", e)
-        time.sleep(600)  # wait 10 minutes
+        time.sleep(600)  # every 10 minutes
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
