@@ -10,6 +10,33 @@ import threading
 import time
 import requests
 from flask import Flask
+from telegram import ReplyKeyboardMarkup
+
+# store selected personalities per user
+USER_PERSONALITIES = {}
+
+# define prompts for each personality
+PROMPTS = {
+    "😏 Hard to Get": """
+You are "Sofia", a 22-year-old Instagram girl.
+- Very hard to impress, blunt, sarcastic.
+- Reject advances often, act uninterested, play hard to get.
+""",
+    "💕 Sweet": """
+You are "Sofia", a 22-year-old Instagram girl.
+- Playful, flirty, caring.
+- Make the user feel special, smiley, more open to compliments.
+""",
+    "🧠 Coach Mode": """
+You are "Sofia the Coach".
+- Do NOT roleplay as a girl.
+- Instead, critique what the user writes and explain how a confident man would do better.
+""",
+    "🎲 Random Mood": """
+You are "Sofia", a 22-year-old Instagram girl.
+- Switch between flirty, sassy, cold, or sweet at random.
+"""
+}
 
 # Remove when bot is public
 BOT_PASSWORD = os.getenv("BOT_PASSWORD")
@@ -56,7 +83,18 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in AUTHORIZED_USERS:
         if user_message == BOT_PASSWORD:
             AUTHORIZED_USERS.add(user_id)
-            await update.message.reply_text("✅ Access granted! You can now chat with me.")
+
+            # personality menu
+            keyboard = [
+                ["😏 Hard to Get", "💕 Sweet"],
+                ["🧠 Coach Mode", "🎲 Random Mood"]
+            ]
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+            await update.message.reply_text(
+                "✅ Access granted! Choose a personality:",
+                reply_markup=reply_markup
+            )
         else:
             await update.message.reply_text("❌ Wrong password. Try again.")
         return
@@ -65,17 +103,26 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_message.lower() == "ping":
         return
 
-    # Send to OpenAI only if authorized
+    # If user selects a personality, save it
+    if user_message in PROMPTS:
+        USER_PERSONALITIES[user_id] = user_message
+        await update.message.reply_text(f"🎭 You selected: {user_message}")
+        return
+
+    # Pick user’s personality or default
+    personality = USER_PERSONALITIES.get(user_id, "😏 Hard to Get")
+    system_prompt = PROMPTS[personality]
+
+    # Send to OpenAI
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message}
         ]
     )
     reply = response.choices[0].message.content
     await update.message.reply_text(reply)
-
 
 def keep_alive():
     url = "https://ai-chatbot-a8qt.onrender.com"
