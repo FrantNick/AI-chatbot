@@ -46,7 +46,11 @@ flask_app = Flask(__name__)
 
 @flask_app.route('/')
 def home():
-    return "Bot is alive!"
+    return "Bot is alive!"  # for manual check in browser
+
+@flask_app.route('/ping')
+def ping():
+    return "ok"  # super lightweight response for cron-job.org
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -123,16 +127,6 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     reply = response.choices[0].message.content
     await update.message.reply_text(reply)
-
-def keep_alive():
-    url = "https://ai-chatbot-a8qt.onrender.com/"  # your Render service URL
-    while True:
-        try:
-            requests.get(url)  # just ping your Flask home()
-            print("Keep-alive ping sent")
-        except Exception as e:
-            print("Keep-alive failed:", e)
-        time.sleep(600)  # every 10 minutes
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
