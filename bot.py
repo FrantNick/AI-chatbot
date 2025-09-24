@@ -12,6 +12,32 @@ import requests
 from flask import Flask
 from telegram import ReplyKeyboardMarkup
 
+# --- scoring thresholds for each difficulty ---
+DIFFICULTY_THRESHOLDS = {
+    "easy":  {"bad_max": 3.9, "good_max": 6.9},   # excellent >= 7.0
+    "medium":{"bad_max": 4.9, "good_max": 7.9},
+    "hard":  {"bad_max": 5.9, "good_max": 8.9}
+}
+
+# track state per user (temp memory; later persist in DB)
+USER_STATE = {}  # user_id -> {"level":int, "difficulty":str, "boss_counter":0, "boss_active":False}
+
+def get_user_state(user_id):
+    s = USER_STATE.get(user_id)
+    if not s:
+        s = {"level": 1, "difficulty": "medium", "boss_counter": 0, "boss_active": False}
+        USER_STATE[user_id] = s
+    return s
+
+def apply_level_change(user_id, change, max_level):
+    s = get_user_state(user_id)
+    s["level"] = max(1, min(max_level, s["level"] + change))
+    # every 5 levels trigger “boss” mode
+    if s["level"] % 5 == 0:
+        s["boss_active"] = True
+        s["boss_counter"] = 0
+    return s["level"]
+
 # store selected personalities per user
 USER_PERSONALITIES = {}
 
@@ -114,51 +140,75 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_message = update.message.text.strip()
 
-    # Check password first
-    if user_id not in AUTHORIZED_USERS:
-        if user_message == BOT_PASSWORD:
-            AUTHORIZED_USERS.add(user_id)
-
-            # personality menu
-            keyboard = [
-                ["😏 Hard to Get", "💕 Sweet"],
-                ["🧠 Coach Mode", "🎲 Random Mood"]
-            ]
-            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-            await update.message.reply_text(
-                "✅ Access granted! Choose a personality:",
-                reply_markup=reply_markup
-            )
-        else:
-            await update.message.reply_text("❌ Wrong password. Try again.")
-        return
-
     # Ignore keep-alive pings
     if user_message.lower() == "ping":
         return
 
-    # If user selects a personality, save it
-    if user_message in PROMPTS:
-        USER_PERSONALITIES[user_id] = user_message
-        await update.message.reply_text(f"🎭 You selected: {user_message}")
-        return
+    # get state & difficulty
+    s = get_user_state(user_id)
+    difficulty = s["difficulty"]
+    max_level = {"easy":25, "medium":50, "hard":100}[difficulty]
 
-    # Pick user’s personality or default
-    personality = USER_PERSONALITIES.get(user_id, "😏 Hard to Get")
-    system_prompt = PROMPTS[personality]
+    # --- step 1: call classifier ---
+    scorer_prompt = f"""You are a blunt numeric scorer. Given a message, return only JSON like:
+    {{"flirty": <0-10>, "personality": <0-10>}}.
+    Input: {user_message}"""
 
-    # Send to OpenAI
-    response = client.chat.completions.create(
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role":"system","content":"Score messages strictly, return only JSON"},
+                  {"role":"user","content":user_message}],
+        max_tokens=40,
+        temperature=0.0
+    )
+
+    import json
+    raw = resp.choices[0].message.content.strip()
+    try:
+        js = json.loads(raw)
+        flirty = int(js.get("flirty",0))
+        personality = int(js.get("personality",0))
+    except Exception:
+        flirty, personality = 3, 3  # fallback
+
+    avg_score = (flirty + personality) / 2
+
+    # --- step 2: decide rating ---
+    th = DIFFICULTY_THRESHOLDS[difficulty]
+    if avg_score < th["bad_max"]:
+        level_change, rating = -1, "bad"
+    elif avg_score <= th["good_max"]:
+        level_change, rating = +1, "good"
+    else:
+        level_change, rating = +2, "excellent"
+
+    new_level = apply_level_change(user_id, level_change, max_level)
+
+    # --- step 3: build system prompt ---
+    system_prompt = PROMPTS[difficulty]  # use your PROMPTS dict
+    if s["boss_active"]:
+        system_prompt += "\nBOSS_MODE: Be cold, short, dismissive for ~5 replies."
+        s["boss_counter"] += 1
+        if s["boss_counter"] >= 5:
+            s["boss_active"] = False
+
+    # --- step 4: get Sofia’s reply ---
+    reply_resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ]
+            {"role":"system","content":system_prompt},
+            {"role":"user","content":user_message}
+        ],
+        temperature=0.7
     )
-    reply = response.choices[0].message.content
-    await update.message.reply_text(reply)
+    reply_text = reply_resp.choices[0].message.content
 
+    # --- step 5: send replies ---
+    await update.message.reply_text(reply_text)
+    await update.message.reply_text(
+        f"(Rating: {rating} — flirty {flirty}/10, personality {personality}/10. "
+        f"Level {new_level}/{max_level})"
+    )
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     flask_app.run(host="0.0.0.0", port=port)
