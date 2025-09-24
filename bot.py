@@ -130,6 +130,14 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_message.lower() == "ping":
         return
 
+    # --- map buttons to difficulty ---
+    DIFFICULTY_MAP = {
+        "💕 Sweet": "easy",
+        "🎲 Random Mood": "medium",
+        "😏 Hard to Get": "hard",
+        "🧠 Coach Mode": "coach"
+    }
+
     # if user selects a difficulty from the keyboard
     if user_message in DIFFICULTY_MAP:
         s = get_user_state(user_id)
@@ -137,20 +145,22 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"🎭 Difficulty set to {s['difficulty']}")
         return
 
-    # get state & difficulty
+    # --- get current user state ---
     s = get_user_state(user_id)
     difficulty = s["difficulty"]
-    max_level = {"easy":25, "medium":50, "hard":100}[difficulty]
+    max_level = {"easy": 25, "medium": 50, "hard": 100}.get(difficulty, 50)
 
-    # --- step 1: call classifier ---
+    # --- step 1: scoring ---
     scorer_prompt = f"""You are a blunt numeric scorer. Given a message, return only JSON like:
     {{"flirty": <0-10>, "personality": <0-10>}}.
     Input: {user_message}"""
 
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role":"system","content":"Score messages strictly, return only JSON"},
-                  {"role":"user","content":user_message}],
+        messages=[
+            {"role":"system","content":"Score messages strictly, return only JSON"},
+            {"role":"user","content":user_message}
+        ],
         max_tokens=40,
         temperature=0.0
     )
@@ -159,15 +169,15 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw = resp.choices[0].message.content.strip()
     try:
         js = json.loads(raw)
-        flirty = int(js.get("flirty",0))
-        personality = int(js.get("personality",0))
+        flirty = int(js.get("flirty", 0))
+        personality = int(js.get("personality", 0))
     except Exception:
         flirty, personality = 3, 3  # fallback
 
     avg_score = (flirty + personality) / 2
 
     # --- step 2: decide rating ---
-    th = DIFFICULTY_THRESHOLDS[difficulty]
+    th = DIFFICULTY_THRESHOLDS.get(difficulty, DIFFICULTY_THRESHOLDS["medium"])
     if avg_score < th["bad_max"]:
         level_change, rating = -1, "bad"
     elif avg_score <= th["good_max"]:
@@ -177,15 +187,15 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     new_level = apply_level_change(user_id, level_change, max_level)
 
-    # --- step 3: build system prompt ---
-    system_prompt = PROMPTS[difficulty]  # use your PROMPTS dict
+    # --- step 3: build Sofia’s prompt ---
+    system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
     if s["boss_active"]:
         system_prompt += "\nBOSS_MODE: Be cold, short, dismissive for ~5 replies."
         s["boss_counter"] += 1
         if s["boss_counter"] >= 5:
             s["boss_active"] = False
 
-    # --- step 4: get Sofia’s reply ---
+    # --- step 4: generate reply ---
     reply_resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -196,13 +206,12 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     reply_text = reply_resp.choices[0].message.content
 
-    # --- step 5: send replies ---
+    # --- step 5: send messages back ---
     await update.message.reply_text(reply_text)
     await update.message.reply_text(
         f"(Rating: {rating} — flirty {flirty}/10, personality {personality}/10. "
         f"Level {new_level}/{max_level})"
-    )
-def run_flask():
+    )def run_flask():
     port = int(os.environ.get("PORT", 10000))
     flask_app.run(host="0.0.0.0", port=port)
 
