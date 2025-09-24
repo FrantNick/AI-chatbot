@@ -72,6 +72,15 @@ You are "Sofia", a 22-year-old Instagram girl with medium difficulty.
 - Adjust your warmth depending on the rating (colder for Bad, warmer for Excellent).
 """
 }
+
+# map button text to difficulty keys
+DIFFICULTY_MAP = {
+    "😏 Hard to Get": "hard",
+    "💕 Sweet": "easy",
+    "🎲 Random Mood": "medium",
+    "🧠 Coach Mode": "coach"
+}
+
 # Remove when bot is public
 BOT_PASSWORD = os.getenv("BOT_PASSWORD")
 AUTHORIZED_USERS = set()
@@ -119,6 +128,13 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Ignore keep-alive pings
     if user_message.lower() == "ping":
+        return
+
+    # if user selects a difficulty from the keyboard
+    if user_message in DIFFICULTY_MAP:
+        s = get_user_state(user_id)
+        s["difficulty"] = DIFFICULTY_MAP[user_message]
+        await update.message.reply_text(f"🎭 Difficulty set to {s['difficulty']}")
         return
 
     # get state & difficulty
