@@ -211,7 +211,8 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"(Rating: {rating} — flirty {flirty}/10, personality {personality}/10. "
         f"Level {new_level}/{max_level})"
-    )def run_flask():
+    )
+    def run_flask():
     port = int(os.environ.get("PORT", 10000))
     flask_app.run(host="0.0.0.0", port=port)
 
