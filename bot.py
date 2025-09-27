@@ -162,28 +162,35 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     max_level = {"easy": 25, "medium": 50, "hard": 100}.get(difficulty, 50)
 
     # --- step 1: scoring ---
-    scorer_prompt = f"""You are a blunt numeric scorer. Given a message, return only JSON like:
-    {{"flirty": <0-10>, "personality": <0-10>}}.
-    Input: {user_message}"""
+    scorer_prompt = f"""
+    You are a blunt numeric scorer.
+    Rate the following user message ONLY with valid JSON in this format:
+    {{"flirty": <0-10>, "personality": <0-10>}}
+
+    Message: "{user_message}"
+    """
 
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[
-            {"role":"system","content":"Score messages strictly, return only JSON"},
-            {"role":"user","content":user_message}
-        ],
-        max_tokens=40,
+        messages=[{"role": "system", "content": scorer_prompt}],
+        max_tokens=20,
         temperature=0.0
     )
 
-    import json
     raw = resp.choices[0].message.content.strip()
-    try:
-        js = json.loads(raw)
-        flirty = int(js.get("flirty", 0))
-        personality = int(js.get("personality", 0))
-    except Exception:
-        flirty, personality = 3, 3  # fallback
+
+    import re, json
+    # regex fallback if GPT outputs malformed JSON
+    match = re.search(r'"flirty"\s*:\s*(\d+).*"personality"\s*:\s*(\d+)', raw)
+    if match:
+        flirty, personality = int(match.group(1)), int(match.group(2))
+    else:
+        try:
+            js = json.loads(raw)
+            flirty = int(js.get("flirty", 3))
+            personality = int(js.get("personality", 3))
+        except Exception:
+            flirty, personality = 3, 3  # safe fallback
 
     avg_score = (flirty + personality) / 2
 
