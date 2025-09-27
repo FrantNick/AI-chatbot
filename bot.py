@@ -25,7 +25,13 @@ USER_STATE = {}  # user_id -> {"level":int, "difficulty":str, "boss_counter":0, 
 def get_user_state(user_id):
     s = USER_STATE.get(user_id)
     if not s:
-        s = {"level": 1, "difficulty": "medium", "boss_counter": 0, "boss_active": False}
+        s = {
+            "level": 1,
+            "difficulty": "medium",
+            "boss_counter": 0,
+            "boss_active": False,
+            "show_rating": False   # default: hidden
+        }
         USER_STATE[user_id] = s
     return s
 
@@ -224,16 +230,31 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     reply_text = reply_resp.choices[0].message.content
 
-    # --- step 5: send messages back ---
-    await update.message.reply_text(reply_text)
+   # --- step 5: send messages back ---
+await update.message.reply_text(reply_text)
+
+if s.get("show_rating", False):  # only show if enabled
     await update.message.reply_text(
         f"(Rating: {rating} — flirty {flirty}/10, personality {personality}/10. "
         f"Level {new_level}/{max_level})"
     )
 
+    )
+
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     flask_app.run(host="0.0.0.0", port=port)
+
+async def show_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    s = get_user_state(update.message.from_user.id)
+    s["show_rating"] = True
+    await update.message.reply_text("✅ Rating display is now ON")
+
+async def hide_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    s = get_user_state(update.message.from_user.id)
+    s["show_rating"] = False
+    await update.message.reply_text("❌ Rating display is now OFF")
+
 
 def main():
     # Start Flask in a thread
@@ -242,6 +263,8 @@ def main():
     # Start Telegram bot in main thread
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("showrating", show_rating))
+    app.add_handler(CommandHandler("hiderating", hide_rating))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
     app.run_polling()
