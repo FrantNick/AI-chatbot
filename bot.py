@@ -12,6 +12,16 @@ import requests
 from flask import Flask
 from telegram import ReplyKeyboardMarkup
 
+from telegram import ReplyKeyboardMarkup
+
+def difficulty_keyboard():
+    keyboard = [
+        ["💕 Sweet", "🎲 Random Mood"],
+        ["😏 Hard to Get", "🧠 Coach Mode"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
 # --- scoring thresholds for each difficulty ---
 DIFFICULTY_THRESHOLDS = {
     "easy":  {"bad_max": 3.9, "good_max": 6.9},   # excellent >= 7.0
@@ -135,9 +145,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
 
     if user_id in AUTHORIZED_USERS:
-        await update.message.reply_text("Welcome back 👋 You’re already authorized.")
+        await update.message.reply_text(
+            "welcome back 👋 choose a difficulty or just start chatting.",
+            reply_markup=difficulty_keyboard()
+        )
     else:
-        await update.message.reply_text("🔒 Please enter the password to access this bot:")
+        await update.message.reply_text("🔒 please enter the password to access this bot:")
+
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id not in AUTHORIZED_USERS:
+        await update.message.reply_text("🔒 please enter the password first.")
+        return
+    await update.message.reply_text("🎛️ choose difficulty:", reply_markup=difficulty_keyboard())
+
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -147,29 +167,37 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_message.lower() == "ping":
         return
 
-    # --- map buttons to difficulty ---
-    DIFFICULTY_MAP = {
-        "💕 Sweet": "easy",
-        "🎲 Random Mood": "medium",
-        "😏 Hard to Get": "hard",
-        "🧠 Coach Mode": "coach"
-    }
-
-    # if user selects a difficulty from the keyboard
-    if user_message in DIFFICULTY_MAP:
-        s = get_user_state(user_id)
-        s["difficulty"] = DIFFICULTY_MAP[user_message]
-        await update.message.reply_text(f"🎭 Difficulty set to {s['difficulty']}")
+    # --- password gate ---
+    if user_id not in AUTHORIZED_USERS:
+        if user_message == BOT_PASSWORD:
+            AUTHORIZED_USERS.add(user_id)
+            # initialize user state
+            get_user_state(user_id)
+            await update.message.reply_text(
+                "✅ access granted! choose a difficulty to begin:",
+                reply_markup=difficulty_keyboard()
+            )
+        else:
+            await update.message.reply_text("❌ wrong password. try again.")
         return
 
     # --- get current user state ---
     s = get_user_state(user_id)
+
+    # --- difficulty selection from keyboard ---
+    if user_message in DIFFICULTY_MAP:
+        s["difficulty"] = DIFFICULTY_MAP[user_message]
+        await update.message.reply_text(
+            f"🎭 difficulty set to {s['difficulty']}.",
+            reply_markup=difficulty_keyboard()
+        )
+        return
+
     difficulty = s["difficulty"]
     max_level = {"easy": 25, "medium": 50, "hard": 100}.get(difficulty, 50)
 
-    # --- step 1: scoring ---
-    last_bot = s.get("last_bot_message", "Hello 😏")  # fallback if none yet
-
+    # --- step 1: scoring (with context: last Sofia message) ---
+    last_bot = s.get("last_bot_message", "ok, tell me something about you.")
     scorer_prompt = f"""
 You are a blunt numeric scorer. Given the chat context, return only JSON like:
 {{"flirty": <0-10>, "personality": <0-10>}}.
@@ -181,7 +209,7 @@ User replied: "{user_message}"
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "Score messages strictly, return only JSON"},
+            {"role": "system", "content": "Score messages strictly, return only JSON."},
             {"role": "user", "content": scorer_prompt}
         ],
         max_tokens=40,
@@ -191,7 +219,6 @@ User replied: "{user_message}"
     raw = resp.choices[0].message.content.strip()
 
     import re, json
-    # regex fallback if GPT outputs malformed JSON
     match = re.search(r'"flirty"\s*:\s*(\d+).*"personality"\s*:\s*(\d+)', raw)
     if match:
         flirty, personality = int(match.group(1)), int(match.group(2))
@@ -205,7 +232,7 @@ User replied: "{user_message}"
 
     avg_score = (flirty + personality) / 2
 
-    # --- step 2: decide rating ---
+    # --- step 2: decide rating by difficulty thresholds ---
     th = DIFFICULTY_THRESHOLDS.get(difficulty, DIFFICULTY_THRESHOLDS["medium"])
     if avg_score < th["bad_max"]:
         level_change, rating = -1, "bad"
@@ -216,15 +243,15 @@ User replied: "{user_message}"
 
     new_level = apply_level_change(user_id, level_change, max_level)
 
-    # --- step 3: build Sofia’s prompt ---
+    # --- step 3: build Sofia’s prompt for reply generation ---
     system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
     if s["boss_active"]:
-        system_prompt += "\nBOSS_MODE: Be cold, short, dismissive for ~5 replies."
+        system_prompt += "\nBOSS_MODE: be cold, short, dismissive for ~5 replies."
         s["boss_counter"] += 1
         if s["boss_counter"] >= 5:
             s["boss_active"] = False
 
-    # --- step 4: generate reply ---
+    # --- step 4: generate Sofia’s reply ---
     reply_resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -238,14 +265,14 @@ User replied: "{user_message}"
     # --- step 5: send messages back ---
     await update.message.reply_text(reply_text)
 
-    # Save last Sofia reply for scoring context
+    # Save last Sofia reply for context in next scoring
     s["last_bot_message"] = reply_text
 
     # Show rating only if user enabled it
     if s.get("show_rating", False):
         await update.message.reply_text(
-            f"(Rating: {rating} — flirty {flirty}/10, personality {personality}/10. "
-            f"Level {new_level}/{max_level})"
+            f"(rating: {rating} — flirty {flirty}/10, personality {personality}/10. "
+            f"level {new_level}/{max_level})"
         )
 
     
@@ -271,6 +298,7 @@ def main():
     # Start Telegram bot in main thread
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("menu", menu))
     app.add_handler(CommandHandler("showrating", show_rating))
     app.add_handler(CommandHandler("hiderating", hide_rating))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
