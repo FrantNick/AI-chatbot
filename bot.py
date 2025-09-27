@@ -258,7 +258,7 @@ User replied: "{user_message}"
     reply_resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "assistant", "content": s.get("last_bot_message", "hey 😉")},
             {"role": "user", "content": user_message}
         ],
