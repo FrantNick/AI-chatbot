@@ -244,7 +244,7 @@ User replied: "{user_message}"
     new_level = apply_level_change(user_id, level_change, max_level)
 
     # --- step 3: build Sofia’s prompt for reply generation ---
-    system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
+    system_prompt = SYSTEM_PROMPT + "\n\n" + PROMPTS.get(difficulty, PROMPTS["medium"])
     if s["boss_active"]:
         system_prompt += "\nBOSS_MODE: be cold, short, dismissive for ~5 replies."
         s["boss_counter"] += 1
