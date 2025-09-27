@@ -178,9 +178,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     User replied: "{user_message}"
     """
 
-
     Message: "{user_message}"
-    """
 
    resp = client.chat.completions.create(
     model="gpt-4o-mini",
