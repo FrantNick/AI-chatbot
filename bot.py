@@ -247,6 +247,7 @@ if s.get("show_rating", False):
         f"Level {new_level}/{max_level})"
     )
 
+    
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     flask_app.run(host="0.0.0.0", port=port)
