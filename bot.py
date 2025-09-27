@@ -255,7 +255,7 @@ You are a blunt numeric scorer. Given the chat context, return only JSON like:
 Sofia said: "{last_bot}"
 User replied: "{user_message}"
 """
-     reply_resp = client.chat.completions.create(
+    reply_resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
