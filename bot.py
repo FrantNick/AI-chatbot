@@ -171,24 +171,22 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     last_bot = s.get("last_bot_message", "Hello 😏")  # fallback if none yet
 
     scorer_prompt = f"""
-    You are a blunt numeric scorer. Given the chat context, return only JSON like:
-    {{"flirty": <0-10>, "personality": <0-10>}}.
-    
-    Sofia said: "{last_bot}"
-    User replied: "{user_message}"
-    """
+You are a blunt numeric scorer. Given the chat context, return only JSON like:
+{{"flirty": <0-10>, "personality": <0-10>}}.
 
-    Message: "{user_message}"
+Sofia said: "{last_bot}"
+User replied: "{user_message}"
+"""
 
-   resp = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[
-        {"role":"system","content":"Score messages strictly, return only JSON"},
-        {"role":"user","content":scorer_prompt}
-    ],
-    max_tokens=40,
-    temperature=0.0
-)
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "Score messages strictly, return only JSON"},
+            {"role": "user", "content": scorer_prompt}
+        ],
+        max_tokens=40,
+        temperature=0.0
+    )
 
     raw = resp.choices[0].message.content.strip()
 
@@ -206,7 +204,6 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             flirty, personality = 3, 3  # safe fallback
 
     avg_score = (flirty + personality) / 2
-
     # --- step 2: decide rating ---
     th = DIFFICULTY_THRESHOLDS.get(difficulty, DIFFICULTY_THRESHOLDS["medium"])
     if avg_score < th["bad_max"]:
