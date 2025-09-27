@@ -255,15 +255,14 @@ You are a blunt numeric scorer. Given the chat context, return only JSON like:
 Sofia said: "{last_bot}"
 User replied: "{user_message}"
 """
-
-    resp = client.chat.completions.create(
+    reply_resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "Score messages strictly, return only JSON."},
-            {"role": "user", "content": scorer_prompt}
+            {"role": "system", "content": system_prompt},
+            {"role": "assistant", "content": s.get("last_bot_message", "hey 😉")},
+            {"role": "user", "content": user_message}
         ],
-        max_tokens=40,
-        temperature=0.0
+        temperature=0.7
     )
 
     raw = resp.choices[0].message.content.strip()
