@@ -168,20 +168,29 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     max_level = {"easy": 25, "medium": 50, "hard": 100}.get(difficulty, 50)
 
     # --- step 1: scoring ---
+    last_bot = s.get("last_bot_message", "Hello 😏")  # fallback if none yet
+
     scorer_prompt = f"""
-    You are a blunt numeric scorer.
-    Rate the following user message ONLY with valid JSON in this format:
-    {{"flirty": <0-10>, "personality": <0-10>}}
+    You are a blunt numeric scorer. Given the chat context, return only JSON like:
+    {{"flirty": <0-10>, "personality": <0-10>}}.
+    
+    Sofia said: "{last_bot}"
+    User replied: "{user_message}"
+    """
+
 
     Message: "{user_message}"
     """
 
-    resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "system", "content": scorer_prompt}],
-        max_tokens=20,
-        temperature=0.0
-    )
+   resp = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[
+        {"role":"system","content":"Score messages strictly, return only JSON"},
+        {"role":"user","content":scorer_prompt}
+    ],
+    max_tokens=40,
+    temperature=0.0
+)
 
     raw = resp.choices[0].message.content.strip()
 
@@ -230,10 +239,14 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     reply_text = reply_resp.choices[0].message.content
 
-   # --- step 5: send messages back ---
+  # --- step 5: send messages back ---
 await update.message.reply_text(reply_text)
 
-if s.get("show_rating", False):  # only show if enabled
+# Save last Sofia reply for scoring context
+s["last_bot_message"] = reply_text
+
+# Show rating only if user enabled it
+if s.get("show_rating", False):
     await update.message.reply_text(
         f"(Rating: {rating} — flirty {flirty}/10, personality {personality}/10. "
         f"Level {new_level}/{max_level})"
