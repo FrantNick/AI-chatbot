@@ -204,6 +204,7 @@ User replied: "{user_message}"
             flirty, personality = 3, 3  # safe fallback
 
     avg_score = (flirty + personality) / 2
+
     # --- step 2: decide rating ---
     th = DIFFICULTY_THRESHOLDS.get(difficulty, DIFFICULTY_THRESHOLDS["medium"])
     if avg_score < th["bad_max"]:
@@ -227,25 +228,25 @@ User replied: "{user_message}"
     reply_resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role":"system","content":system_prompt},
-            {"role":"user","content":user_message}
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
         ],
         temperature=0.7
     )
     reply_text = reply_resp.choices[0].message.content
 
-  # --- step 5: send messages back ---
-await update.message.reply_text(reply_text)
+    # --- step 5: send messages back ---
+    await update.message.reply_text(reply_text)
 
-# Save last Sofia reply for scoring context
-s["last_bot_message"] = reply_text
+    # Save last Sofia reply for scoring context
+    s["last_bot_message"] = reply_text
 
-# Show rating only if user enabled it
-if s.get("show_rating", False):
-    await update.message.reply_text(
-        f"(Rating: {rating} — flirty {flirty}/10, personality {personality}/10. "
-        f"Level {new_level}/{max_level})"
-    )
+    # Show rating only if user enabled it
+    if s.get("show_rating", False):
+        await update.message.reply_text(
+            f"(Rating: {rating} — flirty {flirty}/10, personality {personality}/10. "
+            f"Level {new_level}/{max_level})"
+        )
 
     
 def run_flask():
