@@ -331,6 +331,14 @@ User replied: "{user_message}"
         if s["boss_counter"] >= 5:
             s["boss_active"] = False
 
+    # --- step 3b: load facts and inject into Sofia’s prompt ---
+    facts = load_facts(user_id)
+    if facts:
+        fact_lines = [f"- {k}: {v}" for k, v in facts.items()]
+        facts_text = "\n".join(fact_lines)
+        system_prompt += f"\n\n# Known facts about this user:\n{facts_text}"
+
+
     # --- step 4: generate Sofia’s reply ---
     reply_resp = client.chat.completions.create(
         model="gpt-4o-mini",
