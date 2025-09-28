@@ -323,6 +323,34 @@ User replied: "{user_message}"
     system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
     system_prompt += f"\nRemember these facts about the user:\n{facts_text}"
 
+        # --- step 2b: auto-extract personal facts ---
+    fact_prompt = f"""
+    Extract any personal facts from the user's message.
+    Return JSON with keys as fact categories (like 'favorite food', 'hobby', 'name') and values as the detail.
+    If nothing relevant, return {{}}
+
+    User said: "{user_message}"
+    """
+
+    fact_resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "Extract personal facts only, return JSON."},
+            {"role": "user", "content": fact_prompt}
+        ],
+        max_tokens=60,
+        temperature=0.0
+    )
+
+    try:
+        fact_data = json.loads(fact_resp.choices[0].message.content.strip())
+        if fact_data:
+            for k, v in fact_data.items():
+                update_fact(user_id, k, v)  # save each new fact
+    except Exception:
+        pass
+
+
     # --- step 3: build Sofia’s prompt for reply generation ---
     system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
     if s["boss_active"]:
