@@ -14,6 +14,31 @@ from telegram import ReplyKeyboardMarkup
 
 from telegram import ReplyKeyboardMarkup
 
+import json
+
+MEMORY_DIR = "memory"
+os.makedirs(MEMORY_DIR, exist_ok=True)
+
+def memory_file(user_id):
+    return os.path.join(MEMORY_DIR, f"{user_id}.json")
+
+def load_facts(user_id):
+    try:
+        with open(memory_file(user_id), "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_facts(user_id, facts):
+    with open(memory_file(user_id), "w") as f:
+        json.dump(facts, f, indent=2)
+
+def update_fact(user_id, key, value):
+    facts = load_facts(user_id)
+    facts[key] = value
+    save_facts(user_id, facts)
+
+
 def difficulty_keyboard():
     keyboard = [
         ["💕 Sweet", "🎲 Random Mood"],
@@ -292,6 +317,12 @@ User replied: "{user_message}"
 
     new_level = apply_level_change(user_id, level_change, max_level)
 
+    facts = load_facts(user_id)
+    facts_text = "\n".join([f"- {k}: {v}" for k, v in facts.items()]) or "no known facts yet"
+
+    system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
+    system_prompt += f"\nRemember these facts about the user:\n{facts_text}"
+
     # --- step 3: build Sofia’s prompt for reply generation ---
     system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
     if s["boss_active"]:
@@ -339,6 +370,26 @@ async def hide_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
     s["show_rating"] = False
     await update.message.reply_text("❌ Rating display is now OFF")
 
+async def remember(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    try:
+        key, value = context.args[0], " ".join(context.args[1:])
+    except IndexError:
+        await update.message.reply_text("❌ Usage: /remember <key> <value>")
+        return
+
+    update_fact(user_id, key, value)
+    await update.message.reply_text(f"✅ Remembered: {key} = {value}")
+
+async def showmemory(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    facts = load_facts(user_id)
+    if not facts:
+        await update.message.reply_text("ℹ️ No facts saved yet.")
+    else:
+        text = "\n".join([f"{k}: {v}" for k, v in facts.items()])
+        await update.message.reply_text(f"🧠 Your memory:\n{text}")
+
 
 def main():
     # Start Flask in a thread
@@ -348,6 +399,8 @@ def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("menu", menu))
+    app.add_handler(CommandHandler("remember", remember))
+    app.add_handler(CommandHandler("showmemory", showmemory))
     app.add_handler(CommandHandler("showrating", show_rating))
     app.add_handler(CommandHandler("hiderating", hide_rating))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
