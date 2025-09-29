@@ -23,45 +23,26 @@ import json
 import requests
 import os
 
-SUPABASE_EDGE_URL = os.getenv("SUPABASE_EDGE_URL")  # your deployed endpoint
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")       # anon key is fine for calling edge func
+SUPABASE_EDGE_URL = os.getenv("SUPABASE_EDGE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")  # <-- add this in Render env vars
 
 def load_facts(user_id):
-    print("🔎 load_facts called with:", user_id)
-    print("Edge URL:", SUPABASE_EDGE_URL)
-    print("Anon Key present:", SUPABASE_ANON_KEY is not None)
-
     resp = requests.post(
         SUPABASE_EDGE_URL,
-        headers={"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"},
+        headers={"apikey": SUPABASE_SERVICE_ROLE_KEY, "Content-Type": "application/json"},
         json={"action": "load", "user_id": str(user_id)}
     )
-    print("Response status:", resp.status_code, "Body:", resp.text)
-
     if resp.ok:
         return {row["key"]: row["value"] for row in resp.json()}
     return {}
-    
-def update_fact(user_id, key, value):
-    print("✍️ update_fact called with:", user_id, key, value)
-    print("Edge URL:", SUPABASE_EDGE_URL)
-    print("Anon Key present:", SUPABASE_ANON_KEY is not None)
 
-    resp = requests.post(
+def update_fact(user_id, key, value):
+    requests.post(
         SUPABASE_EDGE_URL,
-        headers={"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"},
-        json={
-            "action": "update",
-            "user_id": str(user_id),
-            "key": key,
-            "value": value
-        }
+        headers={"apikey": SUPABASE_SERVICE_ROLE_KEY, "Content-Type": "application/json"},
+        json={"action": "update", "user_id": str(user_id), "key": key, "value": value}
     )
 
-    print("Response status:", resp.status_code, "Body:", resp.text)
-
-    if not resp.ok:
-        print("⚠️ Failed to update fact in Supabase")
 def difficulty_keyboard():
     keyboard = [
         ["💕 Sweet", "🎲 Random Mood"],
