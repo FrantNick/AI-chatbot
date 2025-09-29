@@ -20,33 +20,6 @@ from telegram import ReplyKeyboardMarkup
 from telegram import ReplyKeyboardMarkup
 import json
 
-from supabase import create_client, Client
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-def load_facts(user_id):
-    response = (
-        supabase.table("user_memory")
-        .select("key, value")
-        .eq("user_id", str(user_id))
-        .execute()
-    )
-    if response.data:
-        return {row["key"]: row["value"] for row in response.data}
-    return {}
-
-def update_fact(user_id, key, value):
-    supabase.table("user_memory").upsert(
-        {
-            "user_id": str(user_id),
-            "key": key,
-            "value": value,
-        }
-    ).execute()
-
 
 def difficulty_keyboard():
     keyboard = [
