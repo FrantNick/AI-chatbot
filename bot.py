@@ -3,7 +3,13 @@ load_dotenv()
 import os
 import logging
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
 from openai import OpenAI
 import os
 import threading
@@ -18,21 +24,28 @@ from supabase import create_client, Client
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def load_facts(user_id):
-    response = supabase.table("user_memory").select("key, value").eq("user_id", str(user_id)).execute()
+    response = (
+        supabase.table("user_memory")
+        .select("key, value")
+        .eq("user_id", str(user_id))
+        .execute()
+    )
     if response.data:
         return {row["key"]: row["value"] for row in response.data}
     return {}
 
 def update_fact(user_id, key, value):
-    # upsert = insert if not exists, update if exists
-    supabase.table("user_memory").upsert({
-        "user_id": str(user_id),
-        "key": key,
-        "value": value
-    }).execute()
+    supabase.table("user_memory").upsert(
+        {
+            "user_id": str(user_id),
+            "key": key,
+            "value": value,
+        }
+    ).execute()
 
 
 def difficulty_keyboard():
