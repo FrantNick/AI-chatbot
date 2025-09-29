@@ -20,6 +20,28 @@ from telegram import ReplyKeyboardMarkup
 from telegram import ReplyKeyboardMarkup
 import json
 
+import requests
+import os
+
+SUPABASE_EDGE_URL = os.getenv("SUPABASE_EDGE_URL")  # your deployed endpoint
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_KEY")       # anon key is fine for calling edge func
+
+def load_facts(user_id):
+    resp = requests.post(
+        SUPABASE_EDGE_URL,
+        headers={"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"},
+        json={"action": "load", "user_id": str(user_id)}
+    )
+    if resp.ok:
+        return {row["key"]: row["value"] for row in resp.json()}
+    return {}
+
+def update_fact(user_id, key, value):
+    requests.post(
+        SUPABASE_EDGE_URL,
+        headers={"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"},
+        json={"action": "update", "user_id": str(user_id), "key": key, "value": value}
+    )
 
 def difficulty_keyboard():
     keyboard = [
