@@ -11,32 +11,28 @@ import time
 import requests
 from flask import Flask
 from telegram import ReplyKeyboardMarkup
-
 from telegram import ReplyKeyboardMarkup
-
 import json
 
-MEMORY_DIR = "memory"
-os.makedirs(MEMORY_DIR, exist_ok=True)
+from supabase import create_client, Client
 
-def memory_file(user_id):
-    return os.path.join(MEMORY_DIR, f"{user_id}.json")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def load_facts(user_id):
-    try:
-        with open(memory_file(user_id), "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-def save_facts(user_id, facts):
-    with open(memory_file(user_id), "w") as f:
-        json.dump(facts, f, indent=2)
+    response = supabase.table("user_memory").select("key, value").eq("user_id", str(user_id)).execute()
+    if response.data:
+        return {row["key"]: row["value"] for row in response.data}
+    return {}
 
 def update_fact(user_id, key, value):
-    facts = load_facts(user_id)
-    facts[key] = value
-    save_facts(user_id, facts)
+    # upsert = insert if not exists, update if exists
+    supabase.table("user_memory").upsert({
+        "user_id": str(user_id),
+        "key": key,
+        "value": value
+    }).execute()
 
 
 def difficulty_keyboard():
