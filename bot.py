@@ -24,7 +24,7 @@ import requests
 import os
 
 SUPABASE_EDGE_URL = os.getenv("SUPABASE_EDGE_URL")  # your deployed endpoint
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_KEY")       # anon key is fine for calling edge func
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")       # anon key is fine for calling edge func
 
 def load_facts(user_id):
     resp = requests.post(
