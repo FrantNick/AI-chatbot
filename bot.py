@@ -29,7 +29,11 @@ SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")  # <-- add th
 def load_facts(user_id):
     resp = requests.post(
         SUPABASE_EDGE_URL,
-        headers={"apikey": SUPABASE_SERVICE_ROLE_KEY, "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+            "apikey": SUPABASE_ANON_KEY,
+            "Content-Type": "application/json"
+        },
         json={"action": "load", "user_id": str(user_id)}
     )
     if resp.ok:
