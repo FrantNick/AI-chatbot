@@ -43,8 +43,17 @@ def load_facts(user_id):
 def update_fact(user_id, key, value):
     requests.post(
         SUPABASE_EDGE_URL,
-        headers={"apikey": SUPABASE_SERVICE_ROLE_KEY, "Content-Type": "application/json"},
-        json={"action": "update", "user_id": str(user_id), "key": key, "value": value}
+        headers={
+            "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+            "apikey": SUPABASE_ANON_KEY,
+            "Content-Type": "application/json"
+        },
+        json={
+            "action": "update",
+            "user_id": str(user_id),
+            "key": key,
+            "value": value
+        }
     )
 
 def difficulty_keyboard():
