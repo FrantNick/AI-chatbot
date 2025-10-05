@@ -24,7 +24,7 @@ import requests
 import os
 
 SUPABASE_EDGE_URL = os.getenv("SUPABASE_EDGE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")  # <-- add this in Render env vars
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
 def load_facts(user_id):
     resp = requests.post(
