@@ -399,7 +399,7 @@ reply_resp = client.chat.completions.create(
 reply_text = reply_resp.choices[0].message.content
 
 # --- step 5: send messages back ---
-    await update.message.reply_text(reply_text)
+await update.message.reply_text(reply_text)
 
 # Save last Sofia reply for context in next scoring
 s["last_bot_message"] = reply_text
