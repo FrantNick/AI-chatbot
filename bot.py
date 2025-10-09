@@ -345,74 +345,71 @@ system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
 system_prompt += f"\nRemember these facts about the user:\n{facts_text}"
 
 
-        # --- step 2b: auto-extract personal facts ---
-    fact_prompt = f"""
-    Extract any personal facts from the user\'s message.
-    Return JSON with keys as fact categories (like 'favorite food', 'hobby', 'name') and values as the detail.
-    If nothing relevant, return {{}}
+# --- step 2b: auto-extract personal facts ---
+fact_prompt = f"""
+Extract any personal facts from the user's message.
+Return JSON with keys as fact categories (like 'favorite food', 'hobby', 'name') and values as the detail.
+If nothing relevant, return {{}}
 
-    User said: "{user_message}"
-    """
+User said: "{user_message}"
+"""
 
-    fact_resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "Extract personal facts only, return JSON."},
-            {"role": "user", "content": fact_prompt}
-        ],
-        max_tokens=60,
-        temperature=0.0
+fact_resp = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[
+        {"role": "system", "content": "Extract personal facts only, return JSON."},
+        {"role": "user", "content": fact_prompt}
+    ],
+    max_tokens=60,
+    temperature=0.0
+)
+
+try:
+    fact_data = json.loads(fact_resp.choices[0].message.content.strip())
+    if fact_data:
+        for k, v in fact_data.items():
+            update_fact(user_id, k, v)  # save each new fact
+except Exception:
+    pass
+
+# --- step 3: build Sofia’s prompt for reply generation ---
+system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
+if s["boss_active"]:
+    system_prompt += "\nBOSS_MODE: be cold, short, dismissive for ~5 replies."
+    s["boss_counter"] += 1
+    if s["boss_counter"] >= 5:
+        s["boss_active"] = False
+
+# --- step 3b: load facts and inject into Sofia’s prompt ---
+facts = load_facts(user_id)
+if facts:
+    fact_lines = [f"- {k}: {v}" for k, v in facts.items()]
+    facts_text = "\n".join(fact_lines)
+    system_prompt += f"\n\n# Known facts about this user:\n{facts_text}"
+
+# --- step 4: generate Sofia’s reply ---
+reply_resp = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_message}
+    ],
+    temperature=0.7
+)
+reply_text = reply_resp.choices[0].message.content
+
+# --- step 5: send messages back ---
+await update.message.reply_text(reply_text)
+
+# Save last Sofia reply for context in next scoring
+s["last_bot_message"] = reply_text
+
+# Show rating only if user enabled it
+if s.get("show_rating", False):
+    await update.message.reply_text(
+        f"(rating: {rating} — flirty {flirty}/10, personality {personality}/10. "
+        f"level {new_level}/{max_level})"
     )
-
-    try:
-        fact_data = json.loads(fact_resp.choices[0].message.content.strip())
-        if fact_data:
-            for k, v in fact_data.items():
-                update_fact(user_id, k, v)  # save each new fact
-    except Exception:
-        pass
-
-
-    # --- step 3: build Sofia’s prompt for reply generation ---
-    system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
-    if s["boss_active"]:
-        system_prompt += "\nBOSS_MODE: be cold, short, dismissive for ~5 replies."
-        s["boss_counter"] += 1
-        if s["boss_counter"] >= 5:
-            s["boss_active"] = False
-
-    # --- step 3b: load facts and inject into Sofia’s prompt ---
-    facts = load_facts(user_id)
-    if facts:
-        fact_lines = [f"- {k}: {v}" for k, v in facts.items()]
-        facts_text = "\n".join(fact_lines)
-        system_prompt += f"\n\n# Known facts about this user:\n{facts_text}"
-
-
-    # --- step 4: generate Sofia’s reply ---
-    reply_resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ],
-        temperature=0.7
-    )
-    reply_text = reply_resp.choices[0].message.content
-
-    # --- step 5: send messages back ---
-    await update.message.reply_text(reply_text)
-
-    # Save last Sofia reply for context in next scoring
-    s["last_bot_message"] = reply_text
-
-    # Show rating only if user enabled it
-    if s.get("show_rating", False):
-        await update.message.reply_text(
-            f"(rating: {rating} — flirty {flirty}/10, personality {personality}/10. "
-            f"level {new_level}/{max_level})"
-        )
-
     
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
