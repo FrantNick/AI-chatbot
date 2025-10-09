@@ -306,34 +306,44 @@ score_resp = client.chat.completions.create(
 )
 raw = score_resp.choices[0].message.content.strip()
 match = re.search(r'"flirty"\s*:\s*(\d+).*"personality"\s*:\s*(\d+)', raw)
-    if match:
-        flirty, personality = int(match.group(1)), int(match.group(2))
-    else:
-        try:
-            js = json.loads(raw)
-            flirty = int(js.get("flirty", 3))
-            personality = int(js.get("personality", 3))
-        except Exception:
-            flirty, personality = 3, 3  # safe fallback
+score_resp = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "system", "content": scorer_prompt}],
+    temperature=0.0,
+    max_tokens=30
+)
+raw = score_resp.choices[0].message.content.strip()
 
-    avg_score = (flirty + personality) / 2
+match = re.search(r'"flirty"\s*:\s*(\d+).*"personality"\s*:\s*(\d+)', raw)
+if match:
+    flirty, personality = int(match.group(1)), int(match.group(2))
+else:
+    try:
+        js = json.loads(raw)
+        flirty = int(js.get("flirty", 3))
+        personality = int(js.get("personality", 3))
+    except Exception:
+        flirty, personality = 3, 3  # safe fallback
 
-    # --- step 2: decide rating by difficulty thresholds ---
-    th = DIFFICULTY_THRESHOLDS.get(difficulty, DIFFICULTY_THRESHOLDS["medium"])
-    if avg_score < th["bad_max"]:
-        level_change, rating = -1, "bad"
-    elif avg_score <= th["good_max"]:
-        level_change, rating = +1, "good"
-    else:
-        level_change, rating = +2, "excellent"
+avg_score = (flirty + personality) / 2
 
-    new_level = apply_level_change(user_id, level_change, max_level)
+# --- step 2: decide rating by difficulty thresholds ---
+th = DIFFICULTY_THRESHOLDS.get(difficulty, DIFFICULTY_THRESHOLDS["medium"])
+if avg_score < th["bad_max"]:
+    level_change, rating = -1, "bad"
+elif avg_score <= th["good_max"]:
+    level_change, rating = +1, "good"
+else:
+    level_change, rating = +2, "excellent"
 
-    facts = load_facts(user_id)
-    facts_text = "\n".join([f"- {k}: {v}" for k, v in facts.items()]) or "no known facts yet"
+new_level = apply_level_change(user_id, level_change, max_level)
 
-    system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
-    system_prompt += f"\nRemember these facts about the user:\n{facts_text}"
+facts = load_facts(user_id)
+facts_text = "\n".join([f"- {k}: {v}" for k, v in facts.items()]) or "no known facts yet"
+
+system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
+system_prompt += f"\nRemember these facts about the user:\n{facts_text}"
+
 
         # --- step 2b: auto-extract personal facts ---
     fact_prompt = f"""
