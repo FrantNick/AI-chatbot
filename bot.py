@@ -290,12 +290,12 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- step 1: scoring (with context: last Sofia message) ---
     last_bot = s.get("last_bot_message", "ok, tell me something about you.")
-    scorer_prompt = f"""
-You are a blunt numeric scorer. Given the chat context, return only JSON like:
+    scorer_prompt = f"""You are a blunt numeric scorer. Given the chat context, return only JSON like:
 {{"flirty": <0-10>, "personality": <0-10>}}.
 
-scorer_prompt = f"""You are a blunt numeric scorer. Given the chat context, return only JSON like:
-{{"flirty": <0-10>, "personality": <0-10>}}.
+Sofia said: "{last_bot}"
+User replied: "{user_message}"
+"""
 
 Sofia said: "{last_bot}"
 User replied: "{user_message}"
