@@ -344,7 +344,7 @@ raw = score_resp.choices[0].message.content.strip()
 
         # --- step 2b: auto-extract personal facts ---
     fact_prompt = f"""
-    Extract any personal facts from the user's message.
+    Extract any personal facts from the user\'s message.
     Return JSON with keys as fact categories (like 'favorite food', 'hobby', 'name') and values as the detail.
     If nothing relevant, return {{}}
 
