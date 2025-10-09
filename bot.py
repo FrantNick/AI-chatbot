@@ -22,6 +22,7 @@ import json
 
 import requests
 import os
+import re, json
 
 SUPABASE_EDGE_URL = os.getenv("SUPABASE_EDGE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
@@ -304,9 +305,6 @@ score_resp = client.chat.completions.create(
     max_tokens=30
 )
 raw = score_resp.choices[0].message.content.strip()
-
-
-import re, json
 match = re.search(r'"flirty"\s*:\s*(\d+).*"personality"\s*:\s*(\d+)', raw)
     if match:
         flirty, personality = int(match.group(1)), int(match.group(2))
