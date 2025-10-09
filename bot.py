@@ -297,10 +297,6 @@ Sofia said: "{last_bot}"
 User replied: "{user_message}"
 """
 
-Sofia said: "{last_bot}"
-User replied: "{user_message}"
-"""
-
 score_resp = client.chat.completions.create(
     model="gpt-4o-mini",
     messages=[{"role": "system", "content": scorer_prompt}],
