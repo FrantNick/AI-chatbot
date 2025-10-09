@@ -294,10 +294,8 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 You are a blunt numeric scorer. Given the chat context, return only JSON like:
 {{"flirty": <0-10>, "personality": <0-10>}}.
 
-scorer_prompt = f"""
-You are a blunt numeric scorer. Given the chat context, return only JSON like:
+scorer_prompt = f"""You are a blunt numeric scorer. Given the chat context, return only JSON like:
 {{"flirty": <0-10>, "personality": <0-10>}}.
-
 Sofia said: "{last_bot}"
 User replied: "{user_message}"
 """
