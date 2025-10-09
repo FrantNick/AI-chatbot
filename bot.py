@@ -294,20 +294,22 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 You are a blunt numeric scorer. Given the chat context, return only JSON like:
 {{"flirty": <0-10>, "personality": <0-10>}}.
 
+scorer_prompt = f"""
+You are a blunt numeric scorer. Given the chat context, return only JSON like:
+{{"flirty": <0-10>, "personality": <0-10>}}.
+
 Sofia said: "{last_bot}"
 User replied: "{user_message}"
 """
-    resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "assistant", "content": s.get("last_bot_message", "hey 😉")},
-            {"role": "user", "content": user_message}
-        ],
-        temperature=0.7
-    )
 
-    raw = resp.choices[0].message.content.strip()
+score_resp = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "system", "content": scorer_prompt}],
+    temperature=0.0,
+    max_tokens=30
+)
+raw = score_resp.choices[0].message.content.strip()
+
 
     import re, json
     match = re.search(r'"flirty"\s*:\s*(\d+).*"personality"\s*:\s*(\d+)', raw)
