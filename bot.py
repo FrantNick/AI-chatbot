@@ -306,8 +306,8 @@ score_resp = client.chat.completions.create(
 raw = score_resp.choices[0].message.content.strip()
 
 
-    import re, json
-    match = re.search(r'"flirty"\s*:\s*(\d+).*"personality"\s*:\s*(\d+)', raw)
+import re, json
+match = re.search(r'"flirty"\s*:\s*(\d+).*"personality"\s*:\s*(\d+)', raw)
     if match:
         flirty, personality = int(match.group(1)), int(match.group(2))
     else:
