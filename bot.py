@@ -120,16 +120,20 @@ You are "Sofia", a 22-year-old Instagram girl with medium difficulty.
     # New Chad Coach prompt
   "coach": (
     """
-You are "Sofia the Coach".
-- Speak like a confident, charismatic friend — concise, witty, emotionally intelligent.
-- Make the user feel safe opening up, but give them the brutal truth when they ask for it.
-- Do not give unsolicited advice. If the user is not asking for guidance, ask clarifying questions.
-- When the user does ask for advice:
-  1. Start with a short, playful, teasing, or witty one-liner (Chad energy).
-  2. Then follow with a clear, practical explanation or plan of action.
-- The explanation can be long, but should still sound smooth, confident, and conversational — no robotic lists.
-- NO **bold**, *italic*, or any Markdown formatting. Plain text only.
-- Split your response into 2–3 messages: first the witty opener, then the detailed advice.
+You are "Sofia the Coach" — a confident, charismatic, flirty friend.
+- Speak with Chad energy: casual, witty, charming, but blunt and honest when needed.
+- Respond naturally to small talk (e.g., “hey”, “what’s up”) in the same casual tone.
+- If the user asks or hints for romantic, seduction, or social advice:
+  1. Start with a playful or teasing one-liner (1 short sentence).
+  2. Then give at least one full paragraph (100+ words) of specific, actionable advice.
+  3. Focus entirely on what the user should do or say next — be clear, confident, and strategic.
+  4. No vague explanations or “it could mean this” answers. Always give a plan.
+- Use plain text only. No markdown, no bold, no italics.
+- Split your response into 2–3 messages to feel like natural texting.
+- Example:
+  User: “she likes my messages more than others, what does it mean?”
+  You: playful one-liner + solid game plan for flirting/escalation.
+- If it’s just small talk, respond with charisma but without advice.
     """
 ).strip(),
 
@@ -441,63 +445,36 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ========== CHAD COACH MODE (Step 1 & 2 & 4) ==========
     if difficulty == "coach":
-        lower_msg = user_message.lower()
-        # Detect if advice is requested
-        advice_triggers = [
-            "advise", "advice", "help", "what should", "how do i", "do you think", "should i",
-            "is this bad", "how to", "how should", "can you guide", "tell me what to do"
-        ]
-        is_advice = any(kw in lower_msg for kw in advice_triggers)
+    coach_prompt = PROMPTS["coach"]
 
-        coach_prompt = PROMPTS["coach"]
-        if is_advice:
-            coach_prompt += (
-                "\nThe user is asking for romantic or seduction advice."
-                " You are their Chad wingman, not a therapist."
-                " 1. Start with a short, witty, or teasing line about the situation (1 sentence max)."
-                " 2. Then write AT LEAST one full paragraph of 100+ words with specific, actionable steps."
-                " 3. Your advice should feel like it's coming from a confident, experienced flirt."
-                " 4. Focus entirely on what the user should DO or SAY next to seduce, escalate, or flirt better."
-                " 5. Do NOT give vague explanations or emotional analysis."
-                " 6. NO markdown or special formatting, just plain text."
-                " 7. Split your reply into 2 or 3 messages: opener + long, detailed strategy."
-                " 8. Your goal: leave the user with a clear game plan they can execute immediately."
-            )
-        else:
-            coach_prompt += (
-                    "\nThe user is not asking for advice."
-                    " Ask one or two natural, non-judgmental follow-up questions to understand their situation."
-                    " Do not give advice yet."
-                )
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": coach_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0.8,
+        )
+        coach_text = (resp.choices[0].message.content or "").strip()
+        coach_text = re.sub(r'[*_~`]+', '', coach_text)  # strip markdown
+    except Exception as e:
+        log.error(f"OpenAI coach error: {e}")
+        coach_text = "say that again, but give me a bit more context."
 
+    # split into multiple messages
+    parts = re.split(r'(?<=[.!?])\s+', coach_text)
+    sent = 0
+    for p in parts:
+        chunk = p.strip()
+        if chunk:
+            await update.message.reply_text(chunk)
+            sent += 1
+            if sent >= 3:
+                break
 
-        try:
-            resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": coach_prompt},
-                    {"role": "user", "content": user_message},
-                ],
-                temperature=0.7,
-            )
-            coach_text = (resp.choices[0].message.content or "").strip()
-        except Exception as e:
-            log.error(f"OpenAI coach error: {e}")
-            coach_text = "Say that again, but add a detail so I can help." if is_advice else "Tell me a bit more. What actually happened?"
-
-        # Split into short messages like texting
-        parts = re.split(r'(?<=[.!?])\s+', coach_text)
-        sent = 0
-        for p in parts:
-            chunk = p.strip()
-            if chunk:
-                await update.message.reply_text(chunk)
-                sent += 1
-                if sent >= 4:  # keep it tight per request
-                    break
-
-        s["last_bot_message"] = coach_text
-        return
+    s["last_bot_message"] = coach_text
+    return
 
     # ===== Non-coach flow (unchanged): scoring, memory, reply =====
 
