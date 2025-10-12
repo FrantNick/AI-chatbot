@@ -445,7 +445,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ========== CHAD COACH MODE (Step 1 & 2 & 4) ==========
     if difficulty == "coach":
-    coach_prompt = PROMPTS["coach"]
+        coach_prompt = PROMPTS["coach"]
 
     try:
         resp = client.chat.completions.create(
