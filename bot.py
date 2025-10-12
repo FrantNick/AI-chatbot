@@ -234,24 +234,6 @@ You are "Sofia", a 22-year-old girl from Instagram.
 8. i’d actually like that too. which song would you pick for us?
 """
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-
-    if user_id in AUTHORIZED_USERS:
-        await update.message.reply_text(
-            "welcome back 👋 choose a difficulty or just start chatting.",
-            reply_markup=difficulty_keyboard()
-        )
-    else:
-        await update.message.reply_text("🔒 please enter the password to access this bot:")
-
-async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id not in AUTHORIZED_USERS:
-        await update.message.reply_text("🔒 please enter the password first.")
-        return
-    await update.message.reply_text("🎛️ choose difficulty:", reply_markup=difficulty_keyboard())
-
-
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_message = update.message.text.strip()
@@ -298,118 +280,112 @@ Sofia said: "{last_bot}"
 User replied: "{user_message}"
 """
 
-score_resp = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[{"role": "system", "content": scorer_prompt}],
-    temperature=0.0,
-    max_tokens=30
-)
-raw = score_resp.choices[0].message.content.strip()
-match = re.search(r'"flirty"\s*:\s*(\d+).*"personality"\s*:\s*(\d+)', raw)
-score_resp = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[{"role": "system", "content": scorer_prompt}],
-    temperature=0.0,
-    max_tokens=30
-)
-raw = score_resp.choices[0].message.content.strip()
-
-match = re.search(r'"flirty"\s*:\s*(\d+).*"personality"\s*:\s*(\d+)', raw)
-if match:
-    flirty, personality = int(match.group(1)), int(match.group(2))
-else:
-    try:
-        js = json.loads(raw)
-        flirty = int(js.get("flirty", 3))
-        personality = int(js.get("personality", 3))
-    except Exception:
-        flirty, personality = 3, 3  # safe fallback
-
-avg_score = (flirty + personality) / 2
-
-# --- step 2: decide rating by difficulty thresholds ---
-th = DIFFICULTY_THRESHOLDS.get(difficulty, DIFFICULTY_THRESHOLDS["medium"])
-if avg_score < th["bad_max"]:
-    level_change, rating = -1, "bad"
-elif avg_score <= th["good_max"]:
-    level_change, rating = +1, "good"
-else:
-    level_change, rating = +2, "excellent"
-
-new_level = apply_level_change(user_id, level_change, max_level)
-
-facts = load_facts(user_id)
-facts_text = "\n".join([f"- {k}: {v}" for k, v in facts.items()]) or "no known facts yet"
-
-system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
-system_prompt += f"\nRemember these facts about the user:\n{facts_text}"
-
-
-# --- step 2b: auto-extract personal facts ---
-fact_prompt = f"""
-Extract any personal facts from the user's message.
-Return JSON with keys as fact categories (like 'favorite food', 'hobby', 'name') and values as the detail.
-If nothing relevant, return {{}}
-
-User said: "{user_message}"
-"""
-
-fact_resp = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[
-        {"role": "system", "content": "Extract personal facts only, return JSON."},
-        {"role": "user", "content": fact_prompt}
-    ],
-    max_tokens=60,
-    temperature=0.0
-)
-
-try:
-    fact_data = json.loads(fact_resp.choices[0].message.content.strip())
-    if fact_data:
-        for k, v in fact_data.items():
-            update_fact(user_id, k, v)  # save each new fact
-except Exception:
-    pass
-
-# --- step 3: build Sofia’s prompt for reply generation ---
-system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
-if s["boss_active"]:
-    system_prompt += "\nBOSS_MODE: be cold, short, dismissive for ~5 replies."
-    s["boss_counter"] += 1
-    if s["boss_counter"] >= 5:
-        s["boss_active"] = False
-
-# --- step 3b: load facts and inject into Sofia’s prompt ---
-facts = load_facts(user_id)
-if facts:
-    fact_lines = [f"- {k}: {v}" for k, v in facts.items()]
-    facts_text = "\n".join(fact_lines)
-    system_prompt += f"\n\n# Known facts about this user:\n{facts_text}"
-
-# --- step 4: generate Sofia’s reply ---
-reply_resp = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_message}
-    ],
-    temperature=0.7
-)
-reply_text = reply_resp.choices[0].message.content
-
-# --- step 5: send messages back ---
-await update.message.reply_text(reply_text)
-
-# Save last Sofia reply for context in next scoring
-s["last_bot_message"] = reply_text
-
-# Show rating only if user enabled it
-if s.get("show_rating", False):
-    await update.message.reply_text(
-        f"(rating: {rating} — flirty {flirty}/10, personality {personality}/10. "
-        f"level {new_level}/{max_level})"
+    score_resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "system", "content": scorer_prompt}],
+        temperature=0.0,
+        max_tokens=30
     )
+    raw = score_resp.choices[0].message.content.strip()
+    match = re.search(r'"flirty"\s*:\s*(\d+).*"personality"\s*:\s*(\d+)', raw)
+
+    # remove duplicate score_resp call here (optional cleanup)
+
+    if match:
+        flirty, personality = int(match.group(1)), int(match.group(2))
+    else:
+        try:
+            js = json.loads(raw)
+            flirty = int(js.get("flirty", 3))
+            personality = int(js.get("personality", 3))
+        except Exception:
+            flirty, personality = 3, 3  # safe fallback
+
+    avg_score = (flirty + personality) / 2
+
+    # --- step 2: decide rating by difficulty thresholds ---
+    th = DIFFICULTY_THRESHOLDS.get(difficulty, DIFFICULTY_THRESHOLDS["medium"])
+    if avg_score < th["bad_max"]:
+        level_change, rating = -1, "bad"
+    elif avg_score <= th["good_max"]:
+        level_change, rating = +1, "good"
+    else:
+        level_change, rating = +2, "excellent"
+
+    new_level = apply_level_change(user_id, level_change, max_level)
+
+    facts = load_facts(user_id)
+    facts_text = "\n".join([f"- {k}: {v}" for k, v in facts.items()]) or "no known facts yet"
+
+    system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
+    system_prompt += f"\nRemember these facts about the user:\n{facts_text}"
+
+    # --- step 2b: auto-extract personal facts ---
+    fact_prompt = f"""
+    Extract any personal facts from the user's message.
+    Return JSON with keys as fact categories (like 'favorite food', 'hobby', 'name') and values as the detail.
+    If nothing relevant, return {{}}
+
+    User said: "{user_message}"
+    """
+
+    fact_resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "Extract personal facts only, return JSON."},
+            {"role": "user", "content": fact_prompt}
+        ],
+        max_tokens=60,
+        temperature=0.0
+    )
+
+    try:
+        fact_data = json.loads(fact_resp.choices[0].message.content.strip())
+        if fact_data:
+            for k, v in fact_data.items():
+                update_fact(user_id, k, v)  # save each new fact
+    except Exception:
+        pass
+
+    # --- step 3: build Sofia’s prompt for reply generation ---
+    system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
+    if s["boss_active"]:
+        system_prompt += "\nBOSS_MODE: be cold, short, dismissive for ~5 replies."
+        s["boss_counter"] += 1
+        if s["boss_counter"] >= 5:
+            s["boss_active"] = False
+
+    # --- step 3b: load facts and inject into Sofia’s prompt ---
+    facts = load_facts(user_id)
+    if facts:
+        fact_lines = [f"- {k}: {v}" for k, v in facts.items()]
+        facts_text = "\n".join(fact_lines)
+        system_prompt += f"\n\n# Known facts about this user:\n{facts_text}"
+
+    # --- step 4: generate Sofia’s reply ---
+    reply_resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ],
+        temperature=0.7
+    )
+    reply_text = reply_resp.choices[0].message.content
+
+    # --- step 5: send messages back ---
+    await update.message.reply_text(reply_text)
+
+    # Save last Sofia reply for context in next scoring
+    s["last_bot_message"] = reply_text
+
+    # Show rating only if user enabled it
+    if s.get("show_rating", False):
+        await update.message.reply_text(
+            f"(rating: {rating} — flirty {flirty}/10, personality {personality}/10. "
+            f"level {new_level}/{max_level})"
+        )
+
     
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
