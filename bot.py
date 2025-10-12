@@ -460,7 +460,8 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         coach_text = re.sub(r'[*_~`]+', '', coach_text)  # strip markdown
     except Exception as e:
         log.error(f"OpenAI coach error: {e}")
-        coach_text = "say that again, but give me a bit more context."
+        return
+
 
     # split into multiple messages
     parts = re.split(r'(?<=[.!?])\s+', coach_text)
