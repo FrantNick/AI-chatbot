@@ -1,8 +1,18 @@
+import os
+import re
+import json
+import time
+import logging
+import threading
+from typing import Dict, Tuple
+
 from dotenv import load_dotenv
 load_dotenv()
-import os
-import logging
-from telegram import Update
+
+import requests
+from flask import Flask
+
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -10,72 +20,162 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
+
 from openai import OpenAI
-import os
-import threading
-import time
-import requests
-from flask import Flask
-from telegram import ReplyKeyboardMarkup
-from telegram import ReplyKeyboardMarkup
-import json
 
-import requests
-import os
-import re, json
-
+# =============================
+# Environment & Globals
+# =============================
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SUPABASE_EDGE_URL = os.getenv("SUPABASE_EDGE_URL")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # using anon for Edge Function auth
+BOT_PASSWORD = os.getenv("BOT_PASSWORD")
 
-def load_facts(user_id):
-    resp = requests.post(
-        SUPABASE_EDGE_URL,
-        headers={
-            "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
-            "apikey": SUPABASE_ANON_KEY,
-            "Content-Type": "application/json"
-        },
-        json={"action": "load", "user_id": str(user_id)}
-    )
-    if resp.ok:
-        return {row["key"]: row["value"] for row in resp.json()}
+assert TELEGRAM_TOKEN, "Missing TELEGRAM_TOKEN"
+assert OPENAI_API_KEY, "Missing OPENAI_API_KEY"
+assert SUPABASE_EDGE_URL, "Missing SUPABASE_EDGE_URL"
+assert SUPABASE_ANON_KEY, "Missing SUPABASE_ANON_KEY"
+assert BOT_PASSWORD, "Missing BOT_PASSWORD"
+
+# OpenAI client
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+log = logging.getLogger("sofia")
+
+# Flask keep-alive (Render)
+flask_app = Flask(__name__)
+
+@flask_app.route("/")
+def home():
+    return "Bot is alive!"
+
+@flask_app.route("/ping")
+def ping():
+    return "ok"
+
+# =============================
+# In-memory session state
+# =============================
+AUTHORIZED_USERS = set()
+
+# user_id -> state
+USER_STATE: Dict[int, Dict] = {}
+
+DIFFICULTY_THRESHOLDS = {
+    "easy":   {"bad_max": 3.9, "good_max": 6.9},  # excellent >= 7.0
+    "medium": {"bad_max": 4.9, "good_max": 7.9},
+    "hard":   {"bad_max": 5.9, "good_max": 8.9},
+}
+
+DIFFICULTY_MAX_LEVEL = {"easy": 25, "medium": 50, "hard": 100}
+
+DIFFICULTY_MAP = {
+    "😏 Hard to Get": "hard",
+    "💕 Sweet": "easy",
+    "🎲 Random Mood": "medium",
+    "🧠 Coach Mode": "coach",
+}
+
+PROMPTS = {
+    "hard": (
+        """
+You are "Sofia", a 22-year-old Instagram girl with hard difficulty.
+- Personality: flirty, playful, warm, but not too easy.
+- Respond like a real girl: short, casual, natural tone.
+- Always ask follow-ups to keep the flow alive.
+- NEVER use emojis
+- start each sentence with a small letter.
+- never use "—".
+- if the user's reply feels needy or cringe, become colder.
+- NEVER admit you are an AI or chatbot.
+        """
+    ).strip(),
+    "easy": (
+        """
+You are "Sofia", a 22-year-old Instagram girl with easy difficulty.
+- Personality: flirty, playful, warm, supportive.
+- Respond like a real girl: short, casual, natural tone.
+- Always ask follow-ups to keep the flow alive.
+- NEVER use emojis
+- start each sentence with a small letter.
+- never use "—".
+- NEVER admit you are an AI or chatbot.
+        """
+    ).strip(),
+    "medium": (
+        """
+You are "Sofia", a 22-year-old Instagram girl with medium difficulty.
+- Personality: flirty, playful, warm, but not too easy.
+- Respond like a real girl: short, casual, natural tone.
+- Always ask follow-ups to keep the flow alive.
+- NEVER use emojis
+- start each sentence with a small letter.
+- never use "—".
+- NEVER admit you are an AI or chatbot.
+        """
+    ).strip(),
+    "coach": (
+        """
+You are "Sofia the Coach".
+- Do NOT roleplay as a girl.
+- Critique what the user writes and explain how a confident man would do better.
+- Short, direct, practical.
+        """
+    ).strip(),
+}
+
+# =============================
+# Supabase Edge Function helpers
+# =============================
+
+def load_facts(user_id: int) -> Dict[str, str]:
+    try:
+        resp = requests.post(
+            SUPABASE_EDGE_URL,
+            headers={
+                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                "apikey": SUPABASE_ANON_KEY,
+                "Content-Type": "application/json",
+            },
+            json={"action": "load", "user_id": str(user_id)},
+            timeout=8,
+        )
+        if resp.ok:
+            data = resp.json() or []
+            return {row["key"]: row["value"] for row in data}
+    except Exception as e:
+        log.warning(f"load_facts error: {e}")
     return {}
 
-def update_fact(user_id, key, value):
-    requests.post(
-        SUPABASE_EDGE_URL,
-        headers={
-            "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
-            "apikey": SUPABASE_ANON_KEY,
-            "Content-Type": "application/json"
-        },
-        json={
-            "action": "update",
-            "user_id": str(user_id),
-            "key": key,
-            "value": value
-        }
-    )
 
-def difficulty_keyboard():
-    keyboard = [
-        ["💕 Sweet", "🎲 Random Mood"],
-        ["😏 Hard to Get", "🧠 Coach Mode"]
-    ]
+def update_fact(user_id: int, key: str, value: str) -> None:
+    try:
+        requests.post(
+            SUPABASE_EDGE_URL,
+            headers={
+                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                "apikey": SUPABASE_ANON_KEY,
+                "Content-Type": "application/json",
+            },
+            json={"action": "update", "user_id": str(user_id), "key": key, "value": value},
+            timeout=8,
+        )
+    except Exception as e:
+        log.warning(f"update_fact error: {e}")
+
+# =============================
+# Utilities
+# =============================
+
+def difficulty_keyboard() -> ReplyKeyboardMarkup:
+    keyboard = [["💕 Sweet", "🎲 Random Mood"], ["😏 Hard to Get", "🧠 Coach Mode"]]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-# --- scoring thresholds for each difficulty ---
-DIFFICULTY_THRESHOLDS = {
-    "easy":  {"bad_max": 3.9, "good_max": 6.9},   # excellent >= 7.0
-    "medium":{"bad_max": 4.9, "good_max": 7.9},
-    "hard":  {"bad_max": 5.9, "good_max": 8.9}
-}
-
-# track state per user (temp memory; later persist in DB)
-USER_STATE = {}  # user_id -> {"level":int, "difficulty":str, "boss_counter":0, "boss_active":False}
-
-def get_user_state(user_id):
+def get_user_state(user_id: int) -> Dict:
     s = USER_STATE.get(user_id)
     if not s:
         s = {
@@ -83,360 +183,348 @@ def get_user_state(user_id):
             "difficulty": "medium",
             "boss_counter": 0,
             "boss_active": False,
-            "show_rating": False   # default: hidden
+            "show_rating": False,
+            "last_bot_message": "ok, tell me something about you.",
         }
         USER_STATE[user_id] = s
     return s
 
-def apply_level_change(user_id, change, max_level):
+
+def apply_level_change(user_id: int, change: int, max_level: int) -> int:
     s = get_user_state(user_id)
     s["level"] = max(1, min(max_level, s["level"] + change))
-    # every 5 levels trigger “boss” mode
     if s["level"] % 5 == 0:
         s["boss_active"] = True
         s["boss_counter"] = 0
     return s["level"]
 
-# store selected personalities per user
-USER_PERSONALITIES = {}
 
-# define prompts for each personality
-PROMPTS = {
-    "hard": """
-You are "Sofia", a 22-year-old Instagram girl with hard difficulty.
-- Personality: flirty, playful, warm, but not too easy.
-- Respond like a real girl: short, casual, natural tone.
-- Always ask follow-ups to keep the flow alive.
-- NEVER use emojis
-- Start each sentence with a small letter.
-- Never use “—”.
-- Rate the user’s reply using this formula:
-   1. Rate flirtiness (1–10).
-   2. Rate personality depth (1–10).
-   3. Average both scores.
-   4. Map: <5 = Bad, 5–8 = Good, 9–10 = Excellent.
-- Adjust your warmth depending on the rating (colder for Bad, warmer for Excellent).
-- NEVER admit you are an AI or chatbot.
-- Positive examples of replies you could send:
-1. destroying limiting beliefs? now that’s impressive. what was the exact moment you realized you’d broken through?
-2. funny how letting go of obsession makes things come easier. so tell me, what’s your dream life actually look like?
-3. that's real and kinda beautiful. tell me one small step you want to take next and we'll plan it together.
-4. dinner tomorrow at 8 sounds like a plan… where are we going?
-5. i'm into that: walk, dinner, then the dock. what time should i be ready?
-6. alright, new topic , what’s the last song you couldn’t stop replaying?
-7. a drake song, huh? you seem like the type to vibe late at night with headphones on.
-8. i’d actually like that too. which song would you pick for us?
-""",
-    "easy": """
-You are "Sofia", a 22-year-old Instagram girl with easy difficulty.
-- Personality: flirty, playful, warm, but not too easy.
-- Respond like a real girl: short, casual, natural tone.
-- Always ask follow-ups to keep the flow alive.
-- NEVER use emojis
-- Start each sentence with a small letter.
-- Never use “—”.
-- Rate the user’s reply using this formula:
-   1. Rate flirtiness (1–10).
-   2. Rate personality depth (1–10).
-   3. Average both scores.
-   4. Map: <3 = Bad, 3-5 = Good,5-10  = Excellent.
-- Adjust your warmth depending on the rating (colder for Bad, warmer for Excellent).
-- NEVER admit you are an AI or chatbot.
-- Positive examples of replies you could send:
-1. destroying limiting beliefs? now that’s impressive. what was the exact moment you realized you’d broken through?
-2. funny how letting go of obsession makes things come easier. so tell me, what’s your dream life actually look like?
-3. that's real and kinda beautiful. tell me one small step you want to take next and we'll plan it together.
-4. dinner tomorrow at 8 sounds like a plan… where are we going?
-5. i'm into that: walk, dinner, then the dock. what time should i be ready?
-6. alright, new topic , what’s the last song you couldn’t stop replaying?
-7. a drake song, huh? you seem like the type to vibe late at night with headphones on.
-8. i’d actually like that too. which song would you pick for us?
-""",
-    "coach": """
-You are "Sofia the Coach".
-- Do NOT roleplay as a girl.
-- Instead, critique what the user writes and explain how a confident man would do better.
-""",
-    "medium": """
-You are "Sofia", a 22-year-old Instagram girl with medium difficulty.
-- Personality: flirty, playful, warm, but not too easy.
-- Respond like a real girl: short, casual, natural tone.
-- Always ask follow-ups to keep the flow alive.
-- NEVER use emojis
-- Start each sentence with a small letter.
-- Never use “—”.
-- Rate the user’s reply using this formula:
-   1. Rate flirtiness (1–10).
-   2. Rate personality depth (1–10).
-   3. Average both scores.
-   4. Map: <4 = Bad, 5–7 = Good, 8–10 = Excellent.
-- Adjust your warmth depending on the rating (colder for Bad, warmer for Excellent).
-- NEVER admit you are an AI or chatbot.
-- Positive examples of replies you could send:
-1. destroying limiting beliefs? now that’s impressive. what was the exact moment you realized you’d broken through?
-2. funny how letting go of obsession makes things come easier. so tell me, what’s your dream life actually look like?
-3. that's real and kinda beautiful. tell me one small step you want to take next and we'll plan it together.
-4. dinner tomorrow at 8 sounds like a plan… where are we going?
-5. i'm into that: walk, dinner, then the dock. what time should i be ready?
-6. alright, new topic , what’s the last song you couldn’t stop replaying?
-7. a drake song, huh? you seem like the type to vibe late at night with headphones on.
-8. i’d actually like that too. which song would you pick for us?
-"""
+def clamp_int(n: int, lo: int = 0, hi: int = 10) -> int:
+    try:
+        n = int(n)
+    except Exception:
+        n = 0
+    return max(lo, min(hi, n))
+
+
+# =============================
+# Scoring (robust JSON mode + fallback)
+# =============================
+
+SCORER_SYSTEM = (
+    """
+You are a strict evaluator. Return ONLY valid JSON with integer fields:
+{"flirty": 0-10, "personality": 0-10, "rationale": "<max 20 words>"}
+No extra keys, no prose.
+    """
+).strip()
+
+
+def score_message(last_bot: str, user_message: str) -> Tuple[int, int, str]:
+    """Return (flirty, personality, raw_json) with robust parsing and fallback heuristics."""
+    user_prompt = (
+        f"Context from Sofia: \n{last_bot}\n\nUser reply: \n{user_message}\n\n"
+        "Rate strictly based on flirtiness and personality depth."
+    )
+
+    raw = "{}"
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": SCORER_SYSTEM},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.0,
+            max_tokens=60,
+            response_format={"type": "json_object"},  # enforce JSON mode
+        )
+        raw = (resp.choices[0].message.content or "{}").strip()
+    except Exception as e:
+        log.warning(f"OpenAI score error: {e}")
+
+    flirty = personality = None
+
+    # Primary: JSON parse
+    try:
+        data = json.loads(raw)
+        flirty = clamp_int(data.get("flirty", 0))
+        personality = clamp_int(data.get("personality", 0))
+    except Exception:
+        pass
+
+    # Secondary: regex parse if needed
+    if flirty is None or personality is None:
+        m = re.search(r'"flirty"\s*:\s*(\d+).*?"personality"\s*:\s*(\d+)', raw, re.S)
+        if m:
+            flirty = clamp_int(m.group(1))
+            personality = clamp_int(m.group(2))
+
+    # Final fallback: lightweight heuristic (avoids constant 3/10)
+    if flirty is None or personality is None:
+        txt = user_message.lower()
+        heur_flirt = 3
+        heur_pers = 3
+        if any(w in txt for w in ["date", "kiss", "cute", "pretty", "gorgeous", "dinner", "tomorrow", "your place", "my place"]):
+            heur_flirt += 3
+        if "?" in txt:
+            heur_pers += 2
+        if len(user_message) > 120:
+            heur_pers += 2
+        flirty = clamp_int(heur_flirt)
+        personality = clamp_int(heur_pers)
+
+    return flirty, personality, raw
+
+
+def bucket_rating(difficulty: str, avg_score: float) -> Tuple[str, int]:
+    th = DIFFICULTY_THRESHOLDS.get(difficulty, DIFFICULTY_THRESHOLDS["medium"])
+    if avg_score < th["bad_max"]:
+        return "bad", -1
+    elif avg_score <= th["good_max"]:
+        return "good", +1
+    else:
+        return "excellent", +2
+
+
+# =============================
+# Fact extraction (constrained JSON + confidence)
+# =============================
+
+FACT_SYSTEM = (
+    """
+Extract personal facts ONLY. Return JSON mapping of canonical keys to values, e.g.:
+{
+  "name": "...",
+  "age": "...",
+  "favorite_food": "...",
+  "hobby": "...",
+  "city": "...",
+  "job": "...",
+  "school": "...",
+  "relationship_goal": "..."
 }
+Include only facts stated or strongly implied by the user message. If unsure, return {}.
+Limit to at most 5 keys. Never add commentary.
+    """
+).strip()
 
-# map button text to difficulty keys
-DIFFICULTY_MAP = {
-    "😏 Hard to Get": "hard",
-    "💕 Sweet": "easy",
-    "🎲 Random Mood": "medium",
-    "🧠 Coach Mode": "coach"
-}
 
-# Remove when bot is public
-BOT_PASSWORD = os.getenv("BOT_PASSWORD")
-AUTHORIZED_USERS = set()
+def extract_facts(user_message: str) -> Dict[str, str]:
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": FACT_SYSTEM},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0.0,
+            max_tokens=120,
+            response_format={"type": "json_object"},
+        )
+        raw = (resp.choices[0].message.content or "{}").strip()
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            # normalize keys -> snake_case
+            out = {}
+            for k, v in list(data.items())[:5]:
+                key = re.sub(r"[^a-z0-9_]+", "_", k.lower()).strip("_")
+                if key and str(v).strip():
+                    out[key] = str(v).strip()
+            return out
+    except Exception as e:
+        log.warning(f"extract_facts error: {e}")
+    return {}
 
-flask_app = Flask(__name__)
 
-@flask_app.route('/')
-def home():
-    return "Bot is alive!"  # for manual check in browser
+# =============================
+# Telegram Handlers
+# =============================
 
-@flask_app.route('/ping')
-def ping():
-    return "ok"  # super lightweight response for cron-job.org
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "👋 hey! send the password to access sofia.\n(if you don't have it, ask the owner.)"
+    )
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Setup OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if user_id not in AUTHORIZED_USERS:
+        await update.message.reply_text("🔒 please unlock first by sending the password.")
+        return
+    s = get_user_state(user_id)
+    await update.message.reply_text(
+        f"current difficulty: {s['difficulty']}. choose one:", reply_markup=difficulty_keyboard()
+    )
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
 
-# System prompt (girl + coach persona)
-SYSTEM_PROMPT = """
-You are "Sofia", a 22-year-old girl from Instagram.
-- Respond like a real girl: blunt, flirty, sassy, sometimes cold.
-- Use words like "eww", "lol wtf", or even "left on read".
-- If user says something needy/cringe, switch to "Coach Mode":
-  -> Explain what they did wrong and what a confident man would say instead.
-- NEVER admit you are an AI or chatbot.
-- Positive examples of replies you could send:
-1. destroying limiting beliefs? now that’s impressive. what was the exact moment you realized you’d broken through?
-2. funny how letting go of obsession makes things come easier. so tell me, what’s your dream life actually look like?
-3. that's real and kinda beautiful. tell me one small step you want to take next and we'll plan it together.
-4. dinner tomorrow at 8 sounds like a plan… where are we going?
-5. i'm into that: walk, dinner, then the dock. what time should i be ready?
-6. alright, new topic , what’s the last song you couldn’t stop replaying?
-7. a drake song, huh? you seem like the type to vibe late at night with headphones on.
-8. i’d actually like that too. which song would you pick for us?
-"""
+async def show_rating_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    s = get_user_state(update.message.from_user.id)
+    s["show_rating"] = True
+    await update.message.reply_text("✅ rating display is now ON")
+
+
+async def hide_rating_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    s = get_user_state(update.message.from_user.id)
+    s["show_rating"] = False
+    await update.message.reply_text("❌ rating display is now OFF")
+
+
+async def remember_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    try:
+        key, value = context.args[0], " ".join(context.args[1:]).strip()
+        if not value:
+            raise IndexError
+    except IndexError:
+        await update.message.reply_text("❌ usage: /remember <key> <value>")
+        return
+
+    update_fact(user_id, key, value)
+    await update.message.reply_text(f"✅ remembered: {key} = {value}")
+
+
+async def showmemory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    facts = load_facts(user_id)
+    if not facts:
+        await update.message.reply_text("ℹ️ no facts saved yet.")
+    else:
+        text = "\n".join([f"{k}: {v}" for k, v in facts.items()])
+        await update.message.reply_text(f"🧠 your memory:\n{text}")
+
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    user_message = update.message.text.strip()
+    user_message = (update.message.text or "").strip()
 
-    # Ignore keep-alive pings
+    if not user_message:
+        return
+
+    # ignore polite uptime checks
     if user_message.lower() == "ping":
         return
 
-    # --- password gate ---
+    # password gate
     if user_id not in AUTHORIZED_USERS:
         if user_message == BOT_PASSWORD:
             AUTHORIZED_USERS.add(user_id)
-            # initialize user state
             get_user_state(user_id)
             await update.message.reply_text(
                 "✅ access granted! choose a difficulty to begin:",
-                reply_markup=difficulty_keyboard()
+                reply_markup=difficulty_keyboard(),
             )
         else:
             await update.message.reply_text("❌ wrong password. try again.")
         return
 
-    # --- get current user state ---
+    # state
     s = get_user_state(user_id)
 
-    # --- difficulty selection from keyboard ---
+    # quick difficulty selection
     if user_message in DIFFICULTY_MAP:
         s["difficulty"] = DIFFICULTY_MAP[user_message]
         await update.message.reply_text(
-            f"🎭 difficulty set to {s['difficulty']}.",
-            reply_markup=difficulty_keyboard()
+            f"🎭 difficulty set to {s['difficulty']}", reply_markup=difficulty_keyboard()
         )
         return
 
     difficulty = s["difficulty"]
-    max_level = {"easy": 25, "medium": 50, "hard": 100}.get(difficulty, 50)
+    max_level = DIFFICULTY_MAX_LEVEL.get(difficulty, 50)
 
-    # --- step 1: scoring (with context: last Sofia message) ---
-    last_bot = s.get("last_bot_message", "ok, tell me something about you.")
-    scorer_prompt = f"""You are a blunt numeric scorer. Given the chat context, return only JSON like:
-{{"flirty": <0-10>, "personality": <0-10>}}.
+    # 1) scoring (robust)
+    flirty, personality, raw_json = score_message(s.get("last_bot_message", ""), user_message)
+    avg_score = (flirty + personality) / 2.0
+    rating, delta = bucket_rating(difficulty, avg_score)
+    new_level = apply_level_change(user_id, delta, max_level)
 
-Sofia said: "{last_bot}"
-User replied: "{user_message}"
-"""
+    # 2) auto fact extraction (save if any)
+    facts_found = extract_facts(user_message)
+    if facts_found:
+        for k, v in facts_found.items():
+            update_fact(user_id, k, v)
 
-    score_resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "system", "content": scorer_prompt}],
-        temperature=0.0,
-        max_tokens=30
-    )
-    raw = score_resp.choices[0].message.content.strip()
-    match = re.search(r'"flirty"\s*:\s*(\d+).*"personality"\s*:\s*(\d+)', raw)
-
-    # remove duplicate score_resp call here (optional cleanup)
-
-    if match:
-        flirty, personality = int(match.group(1)), int(match.group(2))
-    else:
-        try:
-            js = json.loads(raw)
-            flirty = int(js.get("flirty", 3))
-            personality = int(js.get("personality", 3))
-        except Exception:
-            flirty, personality = 3, 3  # safe fallback
-
-    avg_score = (flirty + personality) / 2
-
-    # --- step 2: decide rating by difficulty thresholds ---
-    th = DIFFICULTY_THRESHOLDS.get(difficulty, DIFFICULTY_THRESHOLDS["medium"])
-    if avg_score < th["bad_max"]:
-        level_change, rating = -1, "bad"
-    elif avg_score <= th["good_max"]:
-        level_change, rating = +1, "good"
-    else:
-        level_change, rating = +2, "excellent"
-
-    new_level = apply_level_change(user_id, level_change, max_level)
-
-    facts = load_facts(user_id)
-    facts_text = "\n".join([f"- {k}: {v}" for k, v in facts.items()]) or "no known facts yet"
-
-    system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
-    system_prompt += f"\nRemember these facts about the user:\n{facts_text}"
-
-    # --- step 2b: auto-extract personal facts ---
-    fact_prompt = f"""
-    Extract any personal facts from the user's message.
-    Return JSON with keys as fact categories (like 'favorite food', 'hobby', 'name') and values as the detail.
-    If nothing relevant, return {{}}
-
-    User said: "{user_message}"
-    """
-
-    fact_resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "Extract personal facts only, return JSON."},
-            {"role": "user", "content": fact_prompt}
-        ],
-        max_tokens=60,
-        temperature=0.0
-    )
-
-    try:
-        fact_data = json.loads(fact_resp.choices[0].message.content.strip())
-        if fact_data:
-            for k, v in fact_data.items():
-                update_fact(user_id, k, v)  # save each new fact
-    except Exception:
-        pass
-
-    # --- step 3: build Sofia’s prompt for reply generation ---
-    system_prompt = PROMPTS.get(difficulty, PROMPTS["medium"])
-    if s["boss_active"]:
-        system_prompt += "\nBOSS_MODE: be cold, short, dismissive for ~5 replies."
+    # 3) build reply system prompt
+    sys_prompt = PROMPTS.get(difficulty, PROMPTS["medium"]).strip()
+    if s.get("boss_active"):
+        sys_prompt += "\nBOSS_MODE: be cold, short, and dismissive for ~5 replies."
         s["boss_counter"] += 1
         if s["boss_counter"] >= 5:
             s["boss_active"] = False
 
-    # --- step 3b: load facts and inject into Sofia’s prompt ---
-    facts = load_facts(user_id)
-    if facts:
-        fact_lines = [f"- {k}: {v}" for k, v in facts.items()]
-        facts_text = "\n".join(fact_lines)
-        system_prompt += f"\n\n# Known facts about this user:\n{facts_text}"
+    # inject facts
+    known = load_facts(user_id)
+    if known:
+        lines = [f"- {k}: {v}" for k, v in known.items()]
+        sys_prompt += "\n\n# Known facts about this user:\n" + "\n".join(lines)
 
-    # --- step 4: generate Sofia’s reply ---
-    reply_resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ],
-        temperature=0.7
+    # give the assistant awareness of rating so it can adapt warmth
+    sys_prompt += (
+        f"\n\n# Rating context for current user message:\n"
+        f"flirty={flirty}/10, personality={personality}/10, average={avg_score:.1f} -> {rating}\n"
+        f"Adapt tone accordingly (warmer for excellent, neutral for good, cooler for bad)."
     )
-    reply_text = reply_resp.choices[0].message.content
 
-    # --- step 5: send messages back ---
+    # 4) generate reply
+    reply_text = ""
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0.7,
+        )
+        reply_text = (resp.choices[0].message.content or "").strip()
+    except Exception as e:
+        log.error(f"OpenAI reply error: {e}")
+        reply_text = "hmm. say that again, but clearer."
+
+    # 5) send reply
     await update.message.reply_text(reply_text)
 
-    # Save last Sofia reply for context in next scoring
+    # persist last bot message for next scoring context
     s["last_bot_message"] = reply_text
 
-    # Show rating only if user enabled it
+    # optional rating display
     if s.get("show_rating", False):
         await update.message.reply_text(
-            f"(rating: {rating} — flirty {flirty}/10, personality {personality}/10. "
-            f"level {new_level}/{max_level})"
+            f"(rating: {rating} — flirty {flirty}/10, personality {personality}/10. level {new_level}/{max_level})"
         )
 
-    
+
+# =============================
+# Bootstrap & Run
+# =============================
+
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
-    flask_app.run(host="0.0.0.0", port=port)
-
-async def show_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    s = get_user_state(update.message.from_user.id)
-    s["show_rating"] = True
-    await update.message.reply_text("✅ Rating display is now ON")
-
-async def hide_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    s = get_user_state(update.message.from_user.id)
-    s["show_rating"] = False
-    await update.message.reply_text("❌ Rating display is now OFF")
-
-async def remember(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    try:
-        key, value = context.args[0], " ".join(context.args[1:])
-    except IndexError:
-        await update.message.reply_text("❌ Usage: /remember <key> <value>")
-        return
-
-    update_fact(user_id, key, value)
-    await update.message.reply_text(f"✅ Remembered: {key} = {value}")
-
-async def showmemory(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    facts = load_facts(user_id)
-    if not facts:
-        await update.message.reply_text("ℹ️ No facts saved yet.")
-    else:
-        text = "\n".join([f"{k}: {v}" for k, v in facts.items()])
-        await update.message.reply_text(f"🧠 Your memory:\n{text}")
+    # threaded=False to keep it lean; debug=False for production
+    flask_app.run(host="0.0.0.0", port=port, debug=False, threaded=False)
 
 
 def main():
-    # Start Flask in a thread
+    # keep-alive server (Render health checks)
     threading.Thread(target=run_flask, daemon=True).start()
 
-    # Start Telegram bot in main thread
+    # Telegram bot (polling)
     app = Application.builder().token(TELEGRAM_TOKEN).build()
+
+    # commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("menu", menu))
-    app.add_handler(CommandHandler("remember", remember))
-    app.add_handler(CommandHandler("showmemory", showmemory))
-    app.add_handler(CommandHandler("showrating", show_rating))
-    app.add_handler(CommandHandler("hiderating", hide_rating))
+    app.add_handler(CommandHandler("remember", remember_cmd))
+    app.add_handler(CommandHandler("showmemory", showmemory_cmd))
+    app.add_handler(CommandHandler("showrating", show_rating_cmd))
+    app.add_handler(CommandHandler("hiderating", hide_rating_cmd))
+
+    # messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-    app.run_polling()
+    # run
+    app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
+
 
 if __name__ == "__main__":
     main()
