@@ -501,23 +501,6 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         s["last_bot_message"] = coach_text
         return
 
-
-
-
-    # split into multiple messages
-    parts = re.split(r'(?<=[.!?])\s+', coach_text)
-    sent = 0
-    for p in parts:
-        chunk = p.strip()
-        if chunk:
-            await update.message.reply_text(chunk)
-            sent += 1
-            if sent >= 3:
-                break
-
-    s["last_bot_message"] = coach_text
-    return
-
     # ===== Non-coach flow (unchanged): scoring, memory, reply =====
 
     # 1) scoring (robust)
