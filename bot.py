@@ -391,6 +391,24 @@ async def show_rating_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ rating display is now ON")
 
 
+async def set_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if user_id not in DEV_USERS:
+        await update.message.reply_text("⛔ You don't have access to this command.")
+        return
+
+    try:
+        level = int(context.args[0])
+    except (IndexError, ValueError):
+        await update.message.reply_text("❌ Usage: /setlevel <number>")
+        return
+
+    s = get_user_state(user_id)
+    s["level"] = level
+    await update.message.reply_text(f"🧪 Level manually set to {level}")
+
+
+
 async def hide_rating_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     s = get_user_state(update.message.from_user.id)
     s["show_rating"] = False
