@@ -44,6 +44,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SUPABASE_EDGE_URL = os.getenv("SUPABASE_EDGE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # using anon for Edge Function auth
 BOT_PASSWORD = os.getenv("BOT_PASSWORD")
+DEV_PASSWORD = os.getenv("DEV_PASSWORD")
+DEV_USERS = set()
 
 assert TELEGRAM_TOKEN, "Missing TELEGRAM_TOKEN"
 assert OPENAI_API_KEY, "Missing OPENAI_API_KEY"
@@ -423,6 +425,17 @@ async def showmemory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =============================
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # Developer mode password check
+    if context.user_data.get("awaiting_dev_password"):
+        context.user_data["awaiting_dev_password"] = False
+        if user_message == DEV_PASSWORD:
+            DEV_USERS.add(user_id)
+            await update.message.reply_text("✅ Dev mode activated!")
+        else:
+            await update.message.reply_text("❌ Wrong password.")
+        return
+
+    
     user_id = update.message.from_user.id
     user_message = (update.message.text or "").strip()
 
@@ -573,6 +586,15 @@ def run_flask():
     # threaded=False to keep it lean; debug=False for production
     flask_app.run(host="0.0.0.0", port=port, debug=False, threaded=False)
 
+async def devmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+
+    if user_id in DEV_USERS:
+        await update.message.reply_text("🧪 Developer mode already active.")
+        return
+
+    await update.message.reply_text("🔑 Enter dev password:")
+    context.user_data["awaiting_dev_password"] = True
 
 def main():
     # keep-alive server (Render health checks)
@@ -588,6 +610,7 @@ def main():
     app.add_handler(CommandHandler("showmemory", showmemory_cmd))
     app.add_handler(CommandHandler("showrating", show_rating_cmd))
     app.add_handler(CommandHandler("hiderating", hide_rating_cmd))
+    app.add_handler(CommandHandler("devmode", devmode))
 
     # messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
