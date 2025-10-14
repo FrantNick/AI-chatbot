@@ -553,7 +553,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_text = "hmm. say that again, but clearer."
 
     # 5) send reply
-    await update.message.reply_text(reply_text)
+    await send_split_message(update, reply_text, 2, 5)
 
     # persist last bot message for next scoring context
     s["last_bot_message"] = reply_text
