@@ -466,7 +466,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 {"role": "user", "content": user_message},
             ],
             temperature=0.8,
-            max_tokens=500  # Increased so it doesn't cut off structured advice
+            max_tokens=5000  # Increased so it doesn't cut off structured advice
 )
 
         coach_text = (resp.choices[0].message.content or "").strip()
