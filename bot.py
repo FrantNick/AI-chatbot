@@ -25,7 +25,7 @@ from openai import OpenAI
 import asyncio
 import random
 
-async def send_split_message(update: Update, text: str, min_delay: int = 2, max_delay: int = 5):
+async def send_split_message(update: Update, text: str, min_delay: int = 1, max_delay: int = 3):
     parts = re.split(r'(?<=[.!?])\s+', text)
     for i, p in enumerate(parts):
         chunk = p.strip()
