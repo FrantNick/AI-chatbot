@@ -425,6 +425,15 @@ async def showmemory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =============================
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    user_message = (update.message.text or "").strip()
+
+    if not user_message:
+        return
+
+    if user_message.lower() == "ping":
+        return
+
         # Developer mode password check
     if context.user_data.get("awaiting_dev_password"):
         context.user_data["awaiting_dev_password"] = False
@@ -433,16 +442,6 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("✅ Dev mode activated!")
         else:
             await update.message.reply_text("❌ Wrong password.")
-        return
-
-    
-    user_id = update.message.from_user.id
-    user_message = (update.message.text or "").strip()
-
-    if not user_message:
-        return
-
-    if user_message.lower() == "ping":
         return
 
     # password gate
