@@ -449,8 +449,9 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ========== CHAD COACH MODE (Step 1 & 2 & 4) ==========
     if difficulty == "coach":
-        # 1. Always define the prompt first
+        # Always define a default value
         coach_prompt = PROMPTS["coach"]
+        coach_text = ""  # <— define variable up front
     
         try:
             resp = client.chat.completions.create(
@@ -460,15 +461,21 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     {"role": "user", "content": user_message},
                 ],
                 temperature=0.8,
-                max_tokens=5000  # or 500, but this is where you changed it
+                max_tokens=800  # 5000 is unnecessary; 500–800 is plenty
             )
             coach_text = (resp.choices[0].message.content or "").strip()
             coach_text = re.sub(r'[*_~`]', '', coach_text)
     
         except Exception as e:
             log.error(f"OpenAI coach error: {e}")
+            return  # stop execution if API fails
+    
+        # 🛡️ Guard against empty responses
+        if not coach_text:
+            log.warning("Coach mode returned empty response.")
             return
     
+        # Split and send messages naturally
         parts = re.split(r'(?<=[.!?])\s+', coach_text)
         sent = 0
         for p in parts:
@@ -481,6 +488,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
         s["last_bot_message"] = coach_text
         return
+
 
 
 
