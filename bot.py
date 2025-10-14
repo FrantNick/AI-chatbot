@@ -456,24 +456,39 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ========== CHAD COACH MODE (Step 1 & 2 & 4) ==========
     if difficulty == "coach":
+        # 1. Always define the prompt first
         coach_prompt = PROMPTS["coach"]
-
-    try:
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": coach_prompt},
-                {"role": "user", "content": user_message},
-            ],
-            temperature=0.8,
-            max_tokens=5000  # Increased so it doesn't cut off structured advice
-)
-
-        coach_text = (resp.choices[0].message.content or "").strip()
-        coach_text = re.sub(r'[*_~`]+', '', coach_text)  # strip markdown
-    except Exception as e:
-        log.error(f"OpenAI coach error: {e}")
+    
+        try:
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": coach_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                temperature=0.8,
+                max_tokens=5000  # or 500, but this is where you changed it
+            )
+            coach_text = (resp.choices[0].message.content or "").strip()
+            coach_text = re.sub(r'[*_~`]', '', coach_text)
+    
+        except Exception as e:
+            log.error(f"OpenAI coach error: {e}")
+            return
+    
+        parts = re.split(r'(?<=[.!?])\s+', coach_text)
+        sent = 0
+        for p in parts:
+            chunk = p.strip()
+            if chunk:
+                await update.message.reply_text(chunk)
+                sent += 1
+                if sent >= 3:
+                    break
+    
+        s["last_bot_message"] = coach_text
         return
+
 
 
     # split into multiple messages
