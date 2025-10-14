@@ -468,7 +468,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if chunk:
                 await update.message.reply_text(chunk)
                 sent += 1
-                if sent >= 3:
+                if sent >= 10:
                     break
     
         s["last_bot_message"] = coach_text
