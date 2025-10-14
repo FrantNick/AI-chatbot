@@ -22,6 +22,19 @@ from telegram.ext import (
 )
 
 from openai import OpenAI
+import asyncio
+import random
+
+async def send_split_message(update: Update, text: str, min_delay: int = 2, max_delay: int = 5):
+    parts = re.split(r'(?<=[.!?])\s+', text)
+    for i, p in enumerate(parts):
+        chunk = p.strip()
+        if chunk:
+            await update.message.reply_text(chunk)
+            # add delay between messages except after the last one
+            if i < len(parts) - 1:
+                delay = random.randint(min_delay, max_delay)
+                await asyncio.sleep(delay)
 
 # =============================
 # Environment & Globals
