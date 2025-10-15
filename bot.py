@@ -434,6 +434,32 @@ async def set_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🧪 Level manually set to {level}")
 
 
+async def reload_state(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+
+    # make sure only devs can use this
+    if user_id not in DEV_USERS:
+        await update.message.reply_text("⛔ You don't have access to this command.")
+        return
+
+    s = get_user_state(user_id)
+    facts = load_facts(user_id)
+
+    # ✅ Reload level from Supabase if it exists
+    if "level" in facts:
+        try:
+            s["level"] = int(facts["level"])
+        except ValueError:
+            pass
+
+    # ✅ Reload difficulty too if it's stored
+    if "difficulty" in facts:
+        s["difficulty"] = facts["difficulty"]
+
+    await update.message.reply_text(
+        f"🔄 Reloaded state from Supabase:\n{json.dumps(s, indent=2)}"
+    )
+
 async def hide_rating_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     s = get_user_state(update.message.from_user.id)
     s["show_rating"] = False
@@ -653,6 +679,7 @@ def main():
     app.add_handler(CommandHandler("showrating", show_rating_cmd))
     app.add_handler(CommandHandler("hiderating", hide_rating_cmd))
     app.add_handler(CommandHandler("devmode", devmode))
+    app.add_handler(CommandHandler("reloadstate", reload_state)
 
     # messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
