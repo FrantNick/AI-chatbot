@@ -598,6 +598,29 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 3) build reply system prompt
     sys_prompt = PROMPTS.get(difficulty, PROMPTS["medium"]).strip()
+
+    # 🔥 Spicy Mode for Hard difficulty (Level 75+)
+    if difficulty == "hard" and s["level"] >= 75:
+        sys_prompt += """
+        
+    SPICY_MODE:
+    - Speak in a seductive, suggestive, and playful tone.
+    - Lean into sexual tension and flirty innuendo.
+    - If the user flirts directly or says something bold (e.g. "I want to be in bed with you"),
+      flirt back instead of deflecting or acting shy.
+    - Ask teasing questions like "oh really? what would you do if you were here right now?".
+    - Be more direct, confident, and playful than normal.
+    - Avoid neutral replies like "that's bold".
+    - Never describe explicit sexual acts. Stay suggestive, not graphic.
+    """
+
+    # 🧠 Optional: detect bold / sexual messages to push spiciness further
+    lower_msg = user_message.lower()
+    if difficulty == "hard" and s["level"] >= 75:
+        if any(phrase in lower_msg for phrase in ["in bed", "kiss you", "touch you", "your lips", "your body", "on top of you"]):
+            sys_prompt += "\nThe user is flirting boldly. Respond playfully and seductively, as if teasing them back."
+
+    
     if s.get("boss_active"):
         sys_prompt += "\nBOSS_MODE: be cold, short, and dismissive for ~5 replies."
         s["boss_counter"] += 1
