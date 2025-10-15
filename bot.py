@@ -239,9 +239,15 @@ def get_user_state(user_id: int) -> Dict:
 def apply_level_change(user_id: int, change: int, max_level: int) -> int:
     s = get_user_state(user_id)
     s["level"] = max(1, min(max_level, s["level"] + change))
+
+    # Boss mode trigger stays the same
     if s["level"] % 5 == 0:
         s["boss_active"] = True
         s["boss_counter"] = 0
+
+    # ✅ Persist the new level to Supabase
+    update_fact(user_id, "level", str(s["level"]))
+
     return s["level"]
 
 
