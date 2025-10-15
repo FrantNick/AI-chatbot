@@ -493,6 +493,16 @@ async def showmemory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Chat Handler (includes Chad Coach Mode) 
 # =============================
 
+def refresh_level_from_supabase(user_id: int):
+    facts = load_facts(user_id)
+    if "level" in facts:
+        try:
+            level_from_db = int(facts["level"])
+            s = get_user_state(user_id)
+            s["level"] = level_from_db
+        except ValueError:
+            pass
+
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_message = (update.message.text or "").strip()
@@ -528,6 +538,9 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # state
     s = get_user_state(user_id)
+    # 🔄 Sync the level with Supabase to make sure we don't overwrite manual edits
+    refresh_level_from_supabase(user_id)
+
 
     # quick difficulty selection
     if user_message in DIFFICULTY_MAP:
