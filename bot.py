@@ -216,7 +216,23 @@ def get_user_state(user_id: int) -> Dict:
             "show_rating": False,
             "last_bot_message": "ok, tell me something about you.",
         }
+
+        # 🧠 Load saved facts from Supabase if they exist
+        facts = load_facts(user_id)
+
+        # ✅ Restore saved level if found
+        if "level" in facts:
+            try:
+                s["level"] = int(facts["level"])
+            except ValueError:
+                pass
+
+        # ✅ Optional — persist difficulty too if stored
+        if "difficulty" in facts:
+            s["difficulty"] = facts["difficulty"]
+
         USER_STATE[user_id] = s
+
     return s
 
 
@@ -405,8 +421,11 @@ async def set_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     s = get_user_state(user_id)
     s["level"] = level
-    await update.message.reply_text(f"🧪 Level manually set to {level}")
 
+    # ✅ persist level in Supabase
+    update_fact(user_id, "level", str(level))
+
+    await update.message.reply_text(f"🧪 Level manually set to {level}")
 
 
 async def hide_rating_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
