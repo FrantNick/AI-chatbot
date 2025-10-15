@@ -679,7 +679,7 @@ def main():
     app.add_handler(CommandHandler("showrating", show_rating_cmd))
     app.add_handler(CommandHandler("hiderating", hide_rating_cmd))
     app.add_handler(CommandHandler("devmode", devmode))
-    app.add_handler(CommandHandler("reloadstate", reload_state)
+    app.add_handler(CommandHandler("reloadstate", reload_state))
 
     # messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
