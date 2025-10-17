@@ -238,15 +238,21 @@ def get_user_state(user_id: int) -> Dict:
 
 def apply_level_change(user_id: int, change: int, max_level: int) -> int:
     s = get_user_state(user_id)
+    old_level = s["level"]  # 🧠 store old value for logging
+
+    # apply the level change safely (clamp 1–max)
     s["level"] = max(1, min(max_level, s["level"] + change))
 
-    # Boss mode trigger stays the same
+    # ✅ Always persist new level to Supabase — even if level goes down
+    update_fact(user_id, "level", str(s["level"]))
+
+    # 👾 Optional: trigger boss mode every 5 levels
     if s["level"] % 5 == 0:
         s["boss_active"] = True
         s["boss_counter"] = 0
 
-    # ✅ Persist the new level to Supabase
-    update_fact(user_id, "level", str(s["level"]))
+    # 🧾 Log everything so you can see deltas in Render
+    log.info(f"Level change for user {user_id}: {old_level} + ({change}) -> {s['level']}")
 
     return s["level"]
 
