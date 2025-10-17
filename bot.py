@@ -45,6 +45,9 @@ SUPABASE_EDGE_URL = os.getenv("SUPABASE_EDGE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # using anon for Edge Function auth
 BOT_PASSWORD = os.getenv("BOT_PASSWORD")
 DEV_PASSWORD = os.getenv("DEV_PASSWORD")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+EDGE_AUTH_KEY = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY  # prefer service role if available
+
 DEV_USERS = set()
 
 assert TELEGRAM_TOKEN, "Missing TELEGRAM_TOKEN"
@@ -166,8 +169,8 @@ def load_facts(user_id: int) -> Dict[str, str]:
         resp = requests.post(
             SUPABASE_EDGE_URL,
             headers={
-                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
-                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {EDGE_AUTH_KEY}",
+                "apikey": EDGE_AUTH_KEY,
                 "Content-Type": "application/json",
             },
             json={"action": "load", "user_id": str(user_id)},
@@ -176,25 +179,32 @@ def load_facts(user_id: int) -> Dict[str, str]:
         if resp.ok:
             data = resp.json() or []
             return {row["key"]: row["value"] for row in data}
+        else:
+            log.error(f"load_facts failed: {resp.status_code} {resp.text}")
     except Exception as e:
         log.warning(f"load_facts error: {e}")
     return {}
 
 
-def update_fact(user_id: int, key: str, value: str) -> None:
+def update_fact(user_id: int, key: str, value: str) -> bool:
     try:
-        requests.post(
+        resp = requests.post(
             SUPABASE_EDGE_URL,
             headers={
-                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
-                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {EDGE_AUTH_KEY}",
+                "apikey": EDGE_AUTH_KEY,
                 "Content-Type": "application/json",
             },
             json={"action": "update", "user_id": str(user_id), "key": key, "value": value},
             timeout=8,
         )
+        if not resp.ok:
+            log.error(f"update_fact failed [{key}]: {resp.status_code} {resp.text}")
+            return False
+        return True
     except Exception as e:
-        log.warning(f"update_fact error: {e}")
+        log.warning(f"update_fact error [{key}]: {e}")
+        return False
 
 # =============================
 # Utilities
@@ -238,24 +248,41 @@ def get_user_state(user_id: int) -> Dict:
 
 def apply_level_change(user_id: int, change: int, max_level: int) -> int:
     s = get_user_state(user_id)
-    old_level = s["level"]  # 🧠 store old value for logging
+    before = s["level"]
+    target = max(1, min(max_level, before + change))
 
-    # apply the level change safely (clamp 1–max)
-    s["level"] = max(1, min(max_level, s["level"] + change))
+    # no-op shortcut (still log)
+    if target == before:
+        log.info(f"Level unchanged for user {user_id}: {before} + ({change}) -> {target}")
+        return before
 
-    # ✅ Always persist new level to Supabase — even if level goes down
-    update_fact(user_id, "level", str(s["level"]))
+    s["level"] = target
 
-    # 👾 Optional: trigger boss mode every 5 levels
+    # boss trigger unchanged
     if s["level"] % 5 == 0:
         s["boss_active"] = True
         s["boss_counter"] = 0
 
-    # 🧾 Log everything so you can see deltas in Render
-    log.info(f"Level change for user {user_id}: {old_level} + ({change}) -> {s['level']}")
+    # persist with 1 retry
+    ok = update_fact(user_id, "level", str(s["level"]))
+    if not ok:
+        time.sleep(0.3)
+        ok = update_fact(user_id, "level", str(s["level"]))
 
+    # optional: read-after-write to keep USER_STATE == DB
+    if ok:
+        facts = load_facts(user_id)
+        if "level" in facts:
+            try:
+                db_level = int(facts["level"])
+                if db_level != s["level"]:
+                    log.warning(f"Supabase echoed different level for {user_id}: mem={s['level']} db={db_level}. Using db.")
+                    s["level"] = db_level
+            except ValueError:
+                pass
+
+    log.info(f"Level change for user {user_id}: {before} + ({change}) -> {s['level']} (saved={ok})")
     return s["level"]
-
 
 def clamp_int(n: int, lo: int = 0, hi: int = 10) -> int:
     try:
