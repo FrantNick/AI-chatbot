@@ -1,0 +1,58 @@
+# ===========================
+# ENV & Secrets
+# ===========================
+.env
+*.env
+.env.local
+.env.*.local
+
+# ===========================
+# Python
+# ===========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.log
+*.sqlite3
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# ===========================
+# IDE / Editor junk
+# ===========================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ===========================
+# Build / Dist / Cache
+# ===========================
+build/
+dist/
+*.egg-info/
+*.egg
+.cache/
+.pytest_cache/
+.mypy_cache/
+coverage/
+
+# ===========================
+# Render or Deployment Files (optional)
+# ===========================
+*.db
+*.bak
+tmp/
+logs/
+
+# ===========================
+# Misc
+# ===========================
+# if you use secrets in JSON or YAML for local dev:
+secrets.json
+config.yaml
