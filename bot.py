@@ -169,42 +169,57 @@ def load_facts(user_id: int) -> Dict[str, str]:
         resp = requests.post(
             SUPABASE_EDGE_URL,
             headers={
-                "Authorization": f"Bearer {EDGE_AUTH_KEY}",
-                "apikey": EDGE_AUTH_KEY,
+                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                "apikey": SUPABASE_ANON_KEY,
                 "Content-Type": "application/json",
             },
             json={"action": "load", "user_id": str(user_id)},
             timeout=8,
         )
+
+        log.info(f"load_facts({user_id}) -> {resp.status_code} {resp.text}")
+
         if resp.ok:
             data = resp.json() or []
             return {row["key"]: row["value"] for row in data}
         else:
-            log.error(f"load_facts failed: {resp.status_code} {resp.text}")
+            log.error(f"load_facts failed with status {resp.status_code}: {resp.text}")
     except Exception as e:
-        log.warning(f"load_facts error: {e}")
+        log.exception(f"load_facts exception: {e}")
+
     return {}
 
 
-def update_fact(user_id: int, key: str, value: str) -> bool:
+def update_fact(user_id: int, key: str, value: str) -> None:
     try:
+        payload = {
+            "action": "update",
+            "user_id": str(user_id),
+            "key": key,
+            "value": value,
+        }
         resp = requests.post(
             SUPABASE_EDGE_URL,
             headers={
-                "Authorization": f"Bearer {EDGE_AUTH_KEY}",
-                "apikey": EDGE_AUTH_KEY,
+                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                "apikey": SUPABASE_ANON_KEY,
                 "Content-Type": "application/json",
             },
-            json={"action": "update", "user_id": str(user_id), "key": key, "value": value},
+            json=payload,
             timeout=8,
         )
+
+        log.info(
+            f"update_fact(user_id={user_id}, key={key}, value={value}) "
+            f"-> {resp.status_code} {resp.text}"
+        )
+
         if not resp.ok:
-            log.error(f"update_fact failed [{key}]: {resp.status_code} {resp.text}")
-            return False
-        return True
+            log.error(
+                f"update_fact failed for key={key}: {resp.status_code} {resp.text}"
+            )
     except Exception as e:
-        log.warning(f"update_fact error [{key}]: {e}")
-        return False
+        log.exception(f"update_fact exception for key={key}: {e}")
 
 # =============================
 # Utilities
