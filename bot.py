@@ -626,6 +626,22 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🔄 Sync the level with Supabase to make sure we don't overwrite manual edits
     refresh_level_from_supabase(user_id)
 
+    # 🔐 Load plan + usage
+    plan, used = get_plan_and_usage(user_id)
+    # keep in context so we can use at the end
+    context.user_data["plan"] = plan
+    context.user_data["messages_used"] = used
+
+    # ❌ Enforce Starter limit
+    if plan == "starter" and used >= STARTER_LIMIT:
+        await update.message.reply_text(
+            "You’ve used your 20 free messages with Sofia.\n\n"
+            "To keep playing with her, upgrade your plan:\n"
+            "Pro – unlimited messages, low memory\n"
+            "Elite – unlimited messages, maximum memory.\n\n"
+            "Ask the owner for the upgrade link."
+        )
+        return
 
     # quick difficulty selection
     if user_message in DIFFICULTY_MAP:
@@ -634,7 +650,6 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎭 difficulty set to {s['difficulty']}", reply_markup=difficulty_keyboard()
         )
         return
-
     difficulty = s["difficulty"]
     max_level = DIFFICULTY_MAX_LEVEL.get(difficulty, 50)
 
@@ -659,6 +674,15 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
         except Exception as e:
             log.error(f"OpenAI coach error: {e}")
+        s["last_bot_message"] = coach_text
+
+        # 🔢 Count this as a used message for Starter plan
+        plan = context.user_data.get("plan", "starter")
+        used = context.user_data.get("messages_used", 0)
+        new_used = increment_usage_if_needed(user_id, plan, used)
+        context.user_data["messages_used"] = new_used
+
+        return
             return  # stop execution if API fails
     
         # 🛡️ Guard against empty responses
@@ -765,6 +789,11 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"(rating: {rating} — flirty {flirty}/10, personality {personality}/10. level {new_level}/{max_level})"
         )
+    # 🔢 Update usage for Starter plan (only after a successful reply)
+    plan = context.user_data.get("plan", "starter")
+    used = context.user_data.get("messages_used", 0)
+    new_used = increment_usage_if_needed(user_id, plan, used)
+    context.user_data["messages_used"] = new_used
 
 # =============================
 # Bootstrap & Run
@@ -785,6 +814,30 @@ async def devmode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔑 Enter dev password:")
     context.user_data["awaiting_dev_password"] = True
 
+async def set_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+
+    if user_id not in DEV_USERS:
+        await update.message.reply_text("⛔ You don't have access to this command.")
+        return
+
+    try:
+        plan = context.args[0].lower().strip()
+    except (IndexError, ValueError):
+        await update.message.reply_text("❌ Usage: /setplan <starter|pro|elite>")
+        return
+
+    if plan not in ("starter", "pro", "elite"):
+        await update.message.reply_text("❌ Plan must be starter, pro, or elite.")
+        return
+
+    update_fact(user_id, "plan", plan)
+    # optional: reset usage when changing plan
+    if plan == "starter":
+        update_fact(user_id, "messages_used", "0")
+
+    await update.message.reply_text(f"✅ Plan set to: {plan}")
+
 def main():
     # keep-alive server (Render health checks)
     threading.Thread(target=run_flask, daemon=True).start()
@@ -801,6 +854,7 @@ def main():
     app.add_handler(CommandHandler("hiderating", hide_rating_cmd))
     app.add_handler(CommandHandler("devmode", devmode))
     app.add_handler(CommandHandler("reloadstate", reload_state))
+    app.add_handler(CommandHandler("setplan", set_plan))
 
     # messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
