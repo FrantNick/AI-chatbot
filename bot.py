@@ -221,6 +221,43 @@ def update_fact(user_id: int, key: str, value: str) -> None:
     except Exception as e:
         log.exception(f"update_fact exception for key={key}: {e}")
 
+
+# =============================
+# Plans & usage helpers
+# =============================
+
+STARTER_LIMIT = 20  # 20 free messages
+
+def get_plan_and_usage(user_id: int) -> Tuple[str, int]:
+    """
+    Returns (plan, messages_used).
+    Defaults: plan='starter', messages_used=0 if not set yet.
+    """
+    facts = load_facts(user_id)
+    plan = facts.get("plan", "starter").lower().strip()
+    if plan not in ("starter", "pro", "elite"):
+        plan = "starter"
+
+    try:
+        used = int(facts.get("messages_used", "0"))
+    except ValueError:
+        used = 0
+
+    return plan, used
+
+
+def increment_usage_if_needed(user_id: int, plan: str, used: int) -> int:
+    """
+    For starter plan, increments messages_used and persists it.
+    For pro/elite, does nothing.
+    Returns the new used count.
+    """
+    if plan == "starter":
+        used += 1
+        update_fact(user_id, "messages_used", str(used))
+    return used
+
+
 # =============================
 # Utilities
 # =============================
