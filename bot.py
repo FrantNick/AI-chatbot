@@ -211,7 +211,14 @@ def update_fact(user_id: int, key: str, value: str) -> bool:
 
         log.info(
             f"update_fact(user_id={user_id}, key={key}, value={value}) "
-            f"-> {resp.status_code} {resp.text}_")
+            f"-> {resp.status_code} {resp.text}"
+        )
+
+        return resp.ok
+
+    except Exception as e:
+        log.exception(f"update_fact exception for key={key}: {e}")
+        return False
 
 
 # =============================
