@@ -221,6 +221,7 @@ def update_fact(user_id: int, key: str, value: str) -> bool:
         return False
 
 
+
 # =============================
 # Plans & usage helpers
 # =============================
