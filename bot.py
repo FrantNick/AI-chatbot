@@ -190,7 +190,7 @@ def load_facts(user_id: int) -> Dict[str, str]:
     return {}
 
 
-def update_fact(user_id: int, key: str, value: str) -> None:
+def update_fact(user_id: int, key: str, value: str) -> bool:
     try:
         payload = {
             "action": "update",
@@ -211,15 +211,7 @@ def update_fact(user_id: int, key: str, value: str) -> None:
 
         log.info(
             f"update_fact(user_id={user_id}, key={key}, value={value}) "
-            f"-> {resp.status_code} {resp.text}"
-        )
-
-        if not resp.ok:
-            log.error(
-                f"update_fact failed for key={key}: {resp.status_code} {resp.text}"
-            )
-    except Exception as e:
-        log.exception(f"update_fact exception for key={key}: {e}")
+            f"-> {resp.status_code} {resp.text}_
 
 
 # =============================
