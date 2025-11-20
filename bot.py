@@ -910,8 +910,7 @@ async def activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     if not resp.ok:
-        await update.message.reply_text("❌ Email not found.  
-If you bought the product, contact support.")
+        await update.message.reply_text("❌ Email not found. Make sure you used the same email from Sellfy.")
         return
 
     plan = resp.json().get("plan")
