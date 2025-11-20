@@ -625,16 +625,58 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # password gate
     if user_id not in AUTHORIZED_USERS:
+    
+        # user enters the bot password
         if user_message == BOT_PASSWORD:
             AUTHORIZED_USERS.add(user_id)
-            get_user_state(user_id)
+    
             await update.message.reply_text(
-                "✅ access granted! choose a difficulty to begin:",
-                reply_markup=difficulty_keyboard(),
+                "🔑 Perfect. What email did you use when buying the product?"
             )
+    
+            context.user_data["awaiting_email"] = True
+            return
+    
         else:
             await update.message.reply_text("❌ wrong password. try again.")
+            return
+    
+    # Step B — user sends their email after unlocking
+    if context.user_data.get("awaiting_email"):
+        context.user_data["awaiting_email"] = False
+        
+        email = user_message.strip().lower()
+    
+        # fetch plan from Supabase webhook table
+        plan = fetch_user_plan(email)
+    
+        if not plan:
+            await update.message.reply_text(
+                "❌ I couldn’t find your purchase in the system.\n"
+                "Make sure you use the exact email you used on Sellfy."
+            )
+            context.user_data["awaiting_email"] = True
+            return
+
+        # save plan + reset usage
+        update_fact(user_id, "plan", plan)
+        update_fact(user_id, "messages_used", "0")
+
+        await update.message.reply_text(
+            f"✅ Your plan has been activated: {plan}\n\n"
+            "You can start now!"
+        )
         return
+
+    # save plan + reset usage
+    update_fact(user_id, "plan", plan)
+    update_fact(user_id, "messages_used", "0")
+
+    await update.message.reply_text(
+        f"✅ Your plan has been activated: {plan}\n\n"
+        "You can start now!"
+    )
+    return
 
     # state
     s = get_user_state(user_id)
