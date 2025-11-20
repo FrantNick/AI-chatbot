@@ -39,6 +39,7 @@ async def send_split_message(update: Update, text: str, min_delay: int = 1, max_
 # =============================
 # Environment & Globals
 # =============================
+SUPABASE_URL = os.getenv("SUPABASE_URL")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SUPABASE_EDGE_URL = os.getenv("SUPABASE_EDGE_URL")
