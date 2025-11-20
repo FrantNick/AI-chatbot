@@ -681,7 +681,6 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         used = context.user_data.get("messages_used", 0)
         new_used = increment_usage_if_needed(user_id, plan, used)
         context.user_data["messages_used"] = new_used
-        return  # stop execution if API fails
     
         # 🛡️ Guard against empty responses
         if not coach_text:
