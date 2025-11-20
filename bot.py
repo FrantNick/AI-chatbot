@@ -258,6 +258,21 @@ def increment_usage_if_needed(user_id: int, plan: str, used: int) -> int:
     return used
 
 
+def fetch_user_plan(email: str):
+    url = f"{SUPABASE_URL}/rest/v1/user_plans?email=eq.{email}"
+    headers = {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": f"Bearer {SUPABASE_ANON_KEY}"
+    }
+    resp = requests.get(url, headers=headers)
+    if not resp.ok:
+        return None
+    data = resp.json()
+    if not data:
+        return None
+    return data[0].get("plan")
+
+
 # =============================
 # Utilities
 # =============================
