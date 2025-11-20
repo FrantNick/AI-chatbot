@@ -835,6 +835,43 @@ async def set_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"✅ Plan set to: {plan}")
 
+async def activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+
+    try:
+        email = context.args[0].lower().strip()
+    except:
+        await update.message.reply_text("❌ Usage: /activate <email>")
+        return
+
+    # load customer info
+    resp = requests.post(
+        SUPABASE_EDGE_URL,
+        headers={ "Authorization": f"Bearer {SUPABASE_ANON_KEY}", "apikey": SUPABASE_ANON_KEY },
+        json={ "action": "get_plan_by_email", "email": email },
+        timeout=8
+    )
+
+    if not resp.ok:
+        await update.message.reply_text("❌ Email not found.  
+If you bought the product, contact support.")
+        return
+
+    plan = resp.json().get("plan")
+
+    if plan not in ["starter","pro","elite"]:
+        await update.message.reply_text("❌ Invalid plan for this email.")
+        return
+
+    # save plan in user memory
+    update_fact(user_id, "plan", plan)
+
+    # reset usage for starter (optional)
+    if plan == "starter":
+        update_fact(user_id, "messages_used", "0")
+
+    await update.message.reply_text(f"✅ Your plan has been activated: {plan.upper()}")
+
 def main():
     # keep-alive server (Render health checks)
     threading.Thread(target=run_flask, daemon=True).start()
