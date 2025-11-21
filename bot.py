@@ -57,12 +57,6 @@ assert SUPABASE_EDGE_URL, "Missing SUPABASE_EDGE_URL"
 assert SUPABASE_ANON_KEY, "Missing SUPABASE_ANON_KEY"
 assert BOT_PASSWORD, "Missing BOT_PASSWORD"
 
-MEMORY_LIMITS = {
-    "starter": 10,
-    "pro": 50,
-    "elite": 250
-}
-
 # OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -103,6 +97,13 @@ DIFFICULTY_MAP = {
     "🎲 Random Mood": "medium",
     "🧠 Coach Mode": "coach",
 }
+
+MEMORY_LIMITS = {
+    "starter": 10,
+    "pro": 50,
+    "elite": 250
+}
+
 
 PROMPTS = {
     "hard": (
@@ -197,18 +198,6 @@ def load_facts(user_id: int) -> Dict[str, str]:
     return {}
 
 
-def can_store_more_facts(user_id: int, plan: str) -> bool:
-    # load all facts for this user
-    facts = load_facts(user_id)
-    
-    # how many facts this user currently has
-    used = len(facts)
-    
-    # allowed by their plan
-    limit = MEMORY_LIMITS.get(plan, 10)
-
-    return used < limit
-
 def update_fact(user_id: int, key: str, value: str) -> bool:
     try:
         payload = {
@@ -239,6 +228,13 @@ def update_fact(user_id: int, key: str, value: str) -> bool:
         log.exception(f"update_fact exception for key={key}: {e}")
         return False
 
+
+def get_memory_count(user_id: int) -> int:
+    facts = load_facts(user_id)
+    return int(facts.get("memory_count", "0"))
+
+def set_memory_count(user_id: int, count: int):
+    update_fact(user_id, "memory_count", str(count))
 
 
 # =============================
@@ -595,7 +591,20 @@ async def remember_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ usage: /remember <key> <value>")
         return
 
+    plan, _ = get_plan_and_usage(user_id)
+    current = get_memory_count(user_id)
+    limit = MEMORY_LIMITS.get(plan, 10)
+
+    if current >= limit:
+        await update.message.reply_text(
+            "🧠 Your memory is FULL for your current plan.\n"
+            "Upgrade to save more personal details."
+        )
+        return
+
     update_fact(user_id, key, value)
+    set_memory_count(user_id, current + 1)
+
     await update.message.reply_text(f"✅ remembered: {key} = {value}")
 
 
@@ -680,6 +689,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # save plan + reset usage  (MUST BE INSIDE THIS BLOCK)
         update_fact(user_id, "plan", plan)
         update_fact(user_id, "messages_used", "0")
+        set_memory_count(user_id, 0)
     
         await update.message.reply_text(
             f"✅ Your plan has been activated: {plan}\n\n"
@@ -789,17 +799,18 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 2) auto fact extraction (save if any)
     facts_found = extract_facts(user_message)
     if facts_found:
-        # get plan (starter/pro/elite)
         plan, _ = get_plan_and_usage(user_id)
+        current_count = get_memory_count(user_id)
+        limit = MEMORY_LIMITS.get(plan, 10)
     
-        # check limit
-        if can_store_more_facts(user_id, plan):
-            for k, v in facts_found.items():
-                update_fact(user_id, k, v)
-        else:
-            log.info(f"Memory full for user {user_id} ({plan}). Not storing new facts.")
-            # OPTIONAL: send upsell message
-            # await update.message.reply_text("🧠 Your memory is full for your current plan. Upgrade to store more.")
+        for k, v in facts_found.items():
+            if current_count >= limit:
+                log.info(f"User {user_id} memory FULL for plan {plan}.")
+                break
+    
+            update_fact(user_id, k, v)
+            current_count += 1
+            set_memory_count(user_id, current_count)
 
 
     # 3) build reply system prompt
