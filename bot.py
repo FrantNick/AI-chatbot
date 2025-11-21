@@ -769,35 +769,35 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return
 
     
-        if not plan:
-            await update.message.reply_text(
-                "❌ I couldn’t find your purchase in the system.\n"
-                "Make sure you use the exact email you used on Sellfy."
-            )
-            context.user_data["awaiting_email"] = True
-            return
-    
-        # save plan + reset usage  (MUST BE INSIDE THIS BLOCK)
-        update_fact(user_id, "plan", plan)
-        update_fact(user_id, "messages_used", "0")
-        set_memory_count(user_id, 0)
-    
+    if not plan:
         await update.message.reply_text(
-            f"✅ Your plan has been activated: {plan}\n\n"
-            "You can start now!"
+            "❌ I couldn’t find your purchase in the system.\n"
+            "Make sure you use the exact email you used on Sellfy."
         )
+        context.user_data["awaiting_email"] = True
         return
-        
+
+    # save plan + reset usage  (MUST BE INSIDE THIS BLOCK)
+    update_fact(user_id, "plan", plan)
+    update_fact(user_id, "messages_used", "0")
+    set_memory_count(user_id, 0)
+
+    await update.message.reply_text(
+        f"✅ Your plan has been activated: {plan}\n\n"
+        "You can start now!"
+    )
+    return
     
-        # save plan + reset usage
-        update_fact(user_id, "plan", plan)
-        update_fact(user_id, "messages_used", "0")
-    
-        await update.message.reply_text(
-            f"✅ Your plan has been activated: {plan}\n\n"
-            "You can start now!"
-        )
-        return
+
+    # save plan + reset usage
+    update_fact(user_id, "plan", plan)
+    update_fact(user_id, "messages_used", "0")
+
+    await update.message.reply_text(
+        f"✅ Your plan has been activated: {plan}\n\n"
+        "You can start now!"
+    )
+    return
 
     # state
     s = get_user_state(user_id)
