@@ -740,6 +740,34 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     saved_id = record.get("telegram_id")
     plan = record.get("plan")
 
+ # ---------- ONE EMAIL = ONE TELEGRAM ID ----------
+    # Case 1: email already claimed by somebody else
+    if saved_id is not None and str(saved_id) != str(user_id):
+        await update.message.reply_text(
+            "❌ This email is already linked to another Telegram account.\n"
+            "You cannot reuse the same purchase on multiple accounts."
+        )
+        return
+
+    # Case 2: email has no linked Telegram ID -> claim it
+    if saved_id is None:
+        url = f"{SUPABASE_URL}/rest/v1/user_plans?email=eq.{email}"
+        headers = {
+            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+            "Content-Type": "application/json"
+        }
+        requests.patch(url, headers=headers, json={"telegram_id": str(user_id)})
+
+    # Save the plan + reset usage in user_memory
+    update_fact(user_id, "plan", plan)
+    update_fact(user_id, "messages_used", "0")
+
+    await update.message.reply_text(
+        f"✅ Access activated!\nYour plan: {plan}\n\nYou can start chatting now 😄"
+    )
+    return
+
     
         if not plan:
             await update.message.reply_text(
