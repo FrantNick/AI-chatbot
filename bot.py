@@ -276,16 +276,19 @@ def increment_usage_if_needed(user_id: int, plan: str, used: int) -> int:
 def fetch_user_plan(email: str):
     url = f"{SUPABASE_URL}/rest/v1/user_plans?email=eq.{email}"
     headers = {
-        "apikey": SUPABASE_ANON_KEY,
-        "Authorization": f"Bearer {SUPABASE_ANON_KEY}"
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"
     }
+
     resp = requests.get(url, headers=headers)
     if not resp.ok:
         return None
+
     data = resp.json()
     if not data:
         return None
-    return data[0].get("plan")
+
+    return data[0]   # includes: email, plan, telegram_id
 
 
 # =============================
@@ -728,7 +731,15 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         email = user_message.strip().lower()
     
         # fetch plan from Supabase webhook table
-        plan = fetch_user_plan(email)
+    record = fetch_user_plan(email)
+    
+    if not record:
+        await update.message.reply_text("❌ Email not found.")
+        return
+    
+    saved_id = record.get("telegram_id")
+    plan = record.get("plan")
+
     
         if not plan:
             await update.message.reply_text(
