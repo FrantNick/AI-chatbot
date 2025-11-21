@@ -727,46 +727,49 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Step B — user sends their email after unlocking
     if context.user_data.get("awaiting_email"):
         context.user_data["awaiting_email"] = False
-        
+    
         email = user_message.strip().lower()
     
-        # fetch plan from Supabase webhook table
-    record = fetch_user_plan(email)
+        # Fetch the full subscription record
+        record = fetch_user_plan(email)
     
-    if not record:
-        await update.message.reply_text("❌ Email not found.")
-        return
+        if not record:
+            await update.message.reply_text(
+                "❌ Email not found.\nMake sure you used the same email as on Sellfy."
+            )
+            context.user_data["awaiting_email"] = True
+            return
     
-    saved_id = record.get("telegram_id")
-    plan = record.get("plan")
-
- # ---------- ONE EMAIL = ONE TELEGRAM ID ----------
-    # Case 1: email already claimed by somebody else
-    if saved_id is not None and str(saved_id) != str(user_id):
+        plan = record.get("plan")
+        saved_id = record.get("telegram_id")
+    
+        # ---------- ONE EMAIL = ONE TELEGRAM ID ----------
+        if saved_id is not None and str(saved_id) != str(user_id):
+            await update.message.reply_text(
+                "❌ This email is already linked to another Telegram account.\n"
+                "You cannot reuse the same purchase on multiple accounts."
+            )
+            return
+    
+        # If email unclaimed → link it now
+        if saved_id is None:
+            url = f"{SUPABASE_URL}/rest/v1/user_plans?email=eq.{email}"
+            headers = {
+                "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                "Content-Type": "application/json"
+            }
+            requests.patch(url, headers=headers, json={"telegram_id": str(user_id)})
+    
+        # Save plan + reset usage in user_memory
+        update_fact(user_id, "plan", plan)
+        update_fact(user_id, "messages_used", "0")
+    
         await update.message.reply_text(
-            "❌ This email is already linked to another Telegram account.\n"
-            "You cannot reuse the same purchase on multiple accounts."
+            f"✅ Access activated!\nYour plan: {plan}\n\nYou can start chatting now 😄"
         )
         return
 
-    # Case 2: email has no linked Telegram ID -> claim it
-    if saved_id is None:
-        url = f"{SUPABASE_URL}/rest/v1/user_plans?email=eq.{email}"
-        headers = {
-            "apikey": SUPABASE_SERVICE_ROLE_KEY,
-            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-            "Content-Type": "application/json"
-        }
-        requests.patch(url, headers=headers, json={"telegram_id": str(user_id)})
-
-    # Save the plan + reset usage in user_memory
-    update_fact(user_id, "plan", plan)
-    update_fact(user_id, "messages_used", "0")
-
-    await update.message.reply_text(
-        f"✅ Access activated!\nYour plan: {plan}\n\nYou can start chatting now 😄"
-    )
-    return
 
     
     if not plan:
