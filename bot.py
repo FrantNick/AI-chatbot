@@ -274,21 +274,25 @@ def increment_usage_if_needed(user_id: int, plan: str, used: int) -> int:
 
 
 def fetch_user_plan(email: str):
-    url = f"{SUPABASE_URL}/rest/v1/user_plans?email=eq.{email}"
+    url = f"{SUPABASE_URL}/rest/v1/user_plans?select=*&email=eq.{email}"
     headers = {
         "apikey": SUPABASE_SERVICE_ROLE_KEY,
         "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"
     }
 
     resp = requests.get(url, headers=headers)
+
     if not resp.ok:
+        print("ERROR fetching user_plan:", resp.text)
         return None
 
     data = resp.json()
+
     if not data:
         return None
 
-    return data[0]   # includes: email, plan, telegram_id
+    # data[0] contains ONLY: email, plan, product_id, product_name, updated_at
+    return data[0]
 
 
 # =============================
