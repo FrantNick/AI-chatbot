@@ -456,23 +456,38 @@ def bucket_rating(difficulty: str, avg_score: float) -> Tuple[str, int]:
 # Fact extraction (constrained JSON + confidence)
 # =============================
 
-FACT_SYSTEM = (
-    """
-Extract personal facts ONLY. Return JSON mapping of canonical keys to values, e.g.:
+FACT_SYSTEM = """
+Extract ONLY stable, factual, long-term personal information about the user.
+A "fact" must meet ALL of these rules:
+
+1. It must be OBJECTIVE (not emotional, not a belief, not a temporary mood).
+2. It must be STABLE over time (age, city, favorite hobbies, personality traits ONLY if explicitly stated as stable).
+3. It must NOT be:
+   - goals related to money or status
+   - emotional pain, trauma, validation-seeking
+   - temporary goals ("I want $10k/m")
+   - abstract statements ("money gives status")
+   - metaphors or jokes
+4. You may extract at most 2 facts per message.
+5. Only use these fact categories:
+
 {
-  "name": "...",
-  "age": "...",
-  "favorite_food": "...",
-  "hobby": "...",
-  "city": "...",
-  "job": "...",
-  "school": "...",
-  "relationship_goal": "..."
+  "name": "",
+  "age": "",
+  "city": "",
+  "country": "",
+  "school": "",
+  "job": "",
+  "favorite_food": "",
+  "favorite_hobby": "",
+  "interests": "",
+  "relationship_goal": "",
+  "personality": ""
 }
-Include only facts stated or strongly implied by the user message. If unsure, return {}.
-Limit to at most 5 keys. Never add commentary.
-    """
-).strip()
+
+If no valid facts exist, return {}.
+Return strictly JSON with only recognized fields.
+"""
 
 
 def extract_facts(user_message: str) -> Dict[str, str]:
@@ -487,19 +502,56 @@ def extract_facts(user_message: str) -> Dict[str, str]:
             max_tokens=120,
             response_format={"type": "json_object"},
         )
+
         raw = (resp.choices[0].message.content or "{}").strip()
         data = json.loads(raw)
-        if isinstance(data, dict):
-            # normalize keys -> snake_case
-            out = {}
-            for k, v in list(data.items())[:5]:
-                key = re.sub(r"[^a-z0-9_]+", "_", k.lower()).strip("_")
-                if key and str(v).strip():
-                    out[key] = str(v).strip()
-            return out
+
+        if not isinstance(data, dict):
+            return {}
+
+        cleaned = {}
+
+        # Only accept fields that have non-empty values AND are safe
+        allowed = {
+            "name",
+            "age",
+            "city",
+            "country",
+            "school",
+            "job",
+            "favorite_food",
+            "favorite_hobby",
+            "interests",
+            "relationship_goal",
+            "personality",
+        }
+
+        for k, v in data.items():
+            if k not in allowed:
+                continue
+
+            val = str(v).strip().lower()
+
+            # Reject garbage values like "money", "validation", etc.
+            banned_keywords = [
+                "money", "validation", "status", "power",
+                "success", "rich", "10k", "$"
+            ]
+
+            if any(b in val for b in banned_keywords):
+                continue
+
+            # Reject absurd "facts"
+            if len(val) < 2 or len(val) > 60:
+                continue
+
+            cleaned[k] = str(v).strip()
+
+        return cleaned
+
     except Exception as e:
         log.warning(f"extract_facts error: {e}")
-    return {}
+        return {}
 
 # =============================
 # Telegram Handlers
