@@ -57,6 +57,12 @@ assert SUPABASE_EDGE_URL, "Missing SUPABASE_EDGE_URL"
 assert SUPABASE_ANON_KEY, "Missing SUPABASE_ANON_KEY"
 assert BOT_PASSWORD, "Missing BOT_PASSWORD"
 
+MEMORY_LIMITS = {
+    "starter": 10,
+    "pro": 50,
+    "elite": 250
+}
+
 # OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -190,6 +196,18 @@ def load_facts(user_id: int) -> Dict[str, str]:
 
     return {}
 
+
+def can_store_more_facts(user_id: int, plan: str) -> bool:
+    # load all facts for this user
+    facts = load_facts(user_id)
+    
+    # how many facts this user currently has
+    used = len(facts)
+    
+    # allowed by their plan
+    limit = MEMORY_LIMITS.get(plan, 10)
+
+    return used < limit
 
 def update_fact(user_id: int, key: str, value: str) -> bool:
     try:
@@ -771,8 +789,18 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 2) auto fact extraction (save if any)
     facts_found = extract_facts(user_message)
     if facts_found:
-        for k, v in facts_found.items():
-            update_fact(user_id, k, v)
+        # get plan (starter/pro/elite)
+        plan, _ = get_plan_and_usage(user_id)
+    
+        # check limit
+        if can_store_more_facts(user_id, plan):
+            for k, v in facts_found.items():
+                update_fact(user_id, k, v)
+        else:
+            log.info(f"Memory full for user {user_id} ({plan}). Not storing new facts.")
+            # OPTIONAL: send upsell message
+            # await update.message.reply_text("🧠 Your memory is full for your current plan. Upgrade to store more.")
+
 
     # 3) build reply system prompt
     sys_prompt = PROMPTS.get(difficulty, PROMPTS["medium"]).strip()
