@@ -747,10 +747,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
         await update.message.reply_text(f"✅ Plan activated: {plan}")
         return
-
-
-
-    
+        
     if not plan:
         await update.message.reply_text(
             "❌ I couldn’t find your purchase in the system.\n"
