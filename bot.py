@@ -749,18 +749,6 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ Plan activated: {plan}")
         return
 
-    
-
-    # save plan + reset usage
-    update_fact(user_id, "plan", plan)
-    update_fact(user_id, "messages_used", "0")
-
-    await update.message.reply_text(
-        f"✅ Your plan has been activated: {plan}\n\n"
-        "You can start now!"
-    )
-    return
-
     # state
     s = get_user_state(user_id)
     # 🔄 Sync the level with Supabase to make sure we don't overwrite manual edits
