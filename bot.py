@@ -1101,6 +1101,8 @@ def main():
     app.add_handler(CommandHandler("devmode", devmode))
     app.add_handler(CommandHandler("reloadstate", reload_state))
     app.add_handler(CommandHandler("setplan", set_plan))
+    app.add_handler(CommandHandler("account", account_cmd))
+
 
     # messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
