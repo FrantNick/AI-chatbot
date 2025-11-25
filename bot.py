@@ -295,6 +295,31 @@ def fetch_user_plan(email: str):
     return data[0]
 
 
+def set_email_owner(email: str, telegram_id: int) -> bool:
+    """Assign a telegram_id to an email in user_plans (locks the account)."""
+    url = f"{SUPABASE_URL}/rest/v1/user_plans?email=eq.{email}"
+
+    payload = {
+        "telegram_id": str(telegram_id)
+    }
+
+    headers = {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal"
+    }
+
+    resp = requests.patch(url, headers=headers, data=json.dumps(payload))
+
+    if not resp.ok:
+        print("ERROR setting telegram_id:", resp.text)
+        return False
+
+    return True
+
+
+
 # =============================
 # Utilities
 # =============================
@@ -739,6 +764,17 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Email not found. Try again.")
             context.user_data["awaiting_email"] = True
             return
+    
+        # check if this email is already owned
+        existing_owner = record.get("telegram_id")
+        if existing_owner and str(existing_owner) != str(user_id):
+            await update.message.reply_text(
+                "⛔ This email is already linked to another Telegram account."
+            )
+            return
+    
+        # claim ownership (first activation)
+        set_email_owner(email, user_id)
     
         plan = record["plan"]
     
