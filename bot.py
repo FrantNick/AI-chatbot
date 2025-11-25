@@ -748,14 +748,6 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ Plan activated: {plan}")
         return
         
-    if not plan:
-        await update.message.reply_text(
-            "❌ I couldn’t find your purchase in the system.\n"
-            "Make sure you use the exact email you used on Sellfy."
-        )
-        context.user_data["awaiting_email"] = True
-        return
-
     # save plan + reset usage  (MUST BE INSIDE THIS BLOCK)
     update_fact(user_id, "plan", plan)
     update_fact(user_id, "messages_used", "0")
