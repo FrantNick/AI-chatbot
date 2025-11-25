@@ -738,26 +738,17 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not record:
             await update.message.reply_text("❌ Email not found. Try again.")
             context.user_data["awaiting_email"] = True
-            return  # <-- THIS WAS MISSING
+            return
     
         plan = record["plan"]
     
         update_fact(user_id, "plan", plan)
         update_fact(user_id, "messages_used", "0")
+        set_memory_count(user_id, 0)
     
         await update.message.reply_text(f"✅ Plan activated: {plan}")
         return
-        
-    # save plan + reset usage  (MUST BE INSIDE THIS BLOCK)
-    update_fact(user_id, "plan", plan)
-    update_fact(user_id, "messages_used", "0")
-    set_memory_count(user_id, 0)
 
-    await update.message.reply_text(
-        f"✅ Your plan has been activated: {plan}\n\n"
-        "You can start now!"
-    )
-    return
     
 
     # save plan + reset usage
