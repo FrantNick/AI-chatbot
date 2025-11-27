@@ -33,7 +33,9 @@ async def send_split_message(update: Update, text: str, min_delay: int = 1, max_
     for i, p in enumerate(parts):
         chunk = p.strip()
         if chunk:
+            await send_typing(update)
             await update.message.reply_text(chunk)
+
             # add delay between messages except after the last one
             if i < len(parts) - 1:
                 delay = random.randint(min_delay, max_delay)
