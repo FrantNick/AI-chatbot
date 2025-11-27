@@ -588,6 +588,32 @@ def extract_facts(user_message: str) -> Dict[str, str]:
         log.warning(f"extract_facts error: {e}")
         return {}
 
+def delete_fact(user_id: int, key: str) -> bool:
+    try:
+        payload = {
+            "action": "delete",
+            "user_id": str(user_id),
+            "key": key
+        }
+        resp = requests.post(
+            SUPABASE_EDGE_URL,
+            headers={
+                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                "apikey": SUPABASE_ANON_KEY,
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=8,
+        )
+
+        log.info(f"delete_fact({user_id}, {key}) -> {resp.status_code} {resp.text}")
+        return resp.ok
+
+    except Exception as e:
+        log.exception(f"delete_fact error: {e}")
+        return False
+
+
 # =============================
 # Telegram Handlers
 # =============================
@@ -792,7 +818,7 @@ async def resetmemory_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         # delete non-protected facts
         for key in facts.keys():
             if key not in PROTECTED_FACTS:
-                update_fact(user_id, key, "")  # delete value by setting empty string
+                update_fact(user_id, key )  # delete value by setting empty string
 
         # reset memory count
         set_memory_count(user_id, 0)
@@ -830,6 +856,17 @@ async def resetmemory_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     await update.message.reply_text(text, parse_mode="Markdown")
 
+async def send_typing(update: Update, min_delay=1, max_delay=3):
+    chat_id = update.message.chat_id
+    delay = random.uniform(min_delay, max_delay)
+
+    try:
+        await update.get_bot().send_chat_action(chat_id, "typing")
+    except:
+        pass
+
+    await asyncio.sleep(delay)
+
 # =============================
 # Chat Handler (includes Chad Coach Mode) 
 # =============================
@@ -850,6 +887,9 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not user_message:
         return
+
+    # typing animation before ANY reply logic
+    await send_typing(update)
 
     if user_message.lower() == "ping":
         return
@@ -990,6 +1030,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for p in parts:
             chunk = p.strip()
             if chunk:
+                await send_typing(update)
                 await update.message.reply_text(chunk)
                 sent += 1
                 if sent >= 100:
