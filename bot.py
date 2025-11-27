@@ -25,6 +25,9 @@ from openai import OpenAI
 import asyncio
 import random
 
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CallbackQueryHandler
+
 async def send_split_message(update: Update, text: str, min_delay: int = 1, max_delay: int = 3):
     parts = re.split(r'(?<=[.!?])\s+', text)
     for i, p in enumerate(parts):
@@ -712,6 +715,94 @@ async def account_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Load plan + usage
     plan, used = get_plan_and_usage(user_id)
 
+    # Load memory stats + email + activation date
+    facts = load_facts(user_id)
+    memory_used = int(facts.get("memory_count", "0"))
+    memory_limit = MEMORY_LIMITS.get(plan, 10)
+    memory_left = max(0, memory_limit - memory_used)
+
+    email = facts.get("email", "unknown")
+    activation_date = facts.get("activation_date", "unknown")
+
+    # Pretty UI block
+    text = (
+        f"📊 *Your Account Overview*\n\n"
+        f"💼 *Plan:* {plan}\n"
+        f"💬 *Messages Used:* {used}\n"
+        f"🧠 *Memory:* {memory_used}/{memory_limit} (left: {memory_left})\n"
+        f"📧 *Email:* {email}\n"
+        f"⏳ *Activation Date:* {activation_date}\n\n"
+        f"🔼 *Upgrade Your Plan*:\n"
+        f"• [Upgrade to PRO](https://mvglistening.sellfy.store/p/sarah-the-coach-pro-plan/?_gl=1*unrsaz*_gcl_aw*R0NMLjE3NjM2NTY0NTguQ2p3S0NBaUFsZnZJQmhBNkVpd0FjRXJweWVfUE1feDdBT3BONlBFNWF3R2dxSXNMYU4wZUs2RFZYZVR6TXBlRE93XzlNQmdzTFdtOVRSb0NwNzhRQXZEX0J3RQ..*_gcl_au*MTU1ODYwMDA0MC4xNzU4MDM5ODkyLjIwNzg0OTIwNjYuMTc2MzY1NjQ2MS4xNzYzNjU2NDcw*_ga*MTQwNzUyNjI5My4xNzU4MDM5ODky*_ga_2CKX0FMHTP*czE3NjQwODY1NDMkbzYkZzAkdDE3NjQwODY1NDMkajYwJGwwJGgw)\n"
+        f"• [Upgrade to ELITE](https://mvglistening.sellfy.store/p/sarah-coach-elite-plan/?_gl=1*unrsaz*_gcl_aw*R0NMLjE3NjM2NTY0NTguQ2p3S0NBaUFsZnZJQmhBNkVpd0FjRXJweWVfUE1feDdBT3BONlBFNWF3R2dxSXNMYU4wZUs2RFZYZVR6TXBlRE93XzlNQmdzTFdtOVRSb0NwNzhRQXZEX0J3RQ..*_gcl_au*MTU1ODYwMDA0MC4xNzU4MDM5ODkyLjIwNzg0OTIwNjYuMTc2MzY1NjQ2MS4xNzYzNjU2NDcw*_ga*MTQwNzUyNjI5My4xNzU4MDM5ODky*_ga_2CKX0FMHTP*czE3NjQwODY1NDMkbzYkZzAkdDE3NjQwODY1NDMkajYwJGwwJGgw)\n"
+    )
+
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+# ============================
+# /resetmemory (with confirm)
+# ============================
+
+PROTECTED_FACTS = {
+    "plan",
+    "messages_used",
+    "telegram_id",
+    "difficulty",
+    "level",
+    "activation_date",
+}
+
+async def resetmemory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+
+    if user_id not in AUTHORIZED_USERS:
+        await update.message.reply_text("🔒 please unlock first by sending the password.")
+        return
+
+    # ask for confirmation
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Yes, reset memory", callback_data="reset_memory_confirm")],
+        [InlineKeyboardButton("❌ Cancel", callback_data="reset_memory_cancel")]
+    ])
+
+    await update.message.reply_text(
+        "⚠️ Are you sure you want to delete ALL your saved memory?\n\n"
+        "This will NOT remove your plan or your messages used.\n"
+        "It only clears your personality facts, hobbies, preferences, etc.",
+        reply_markup=keyboard
+    )
+
+
+async def resetmemory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.callback_query.from_user.id
+    data = update.callback_query.data
+
+    if data == "reset_memory_cancel":
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text("❌ Memory reset cancelled.")
+        return
+
+    if data == "reset_memory_confirm":
+        await update.callback_query.answer()
+
+        # load all facts
+        facts = load_facts(user_id)
+
+        # delete non-protected facts
+        for key in facts.keys():
+            if key not in PROTECTED_FACTS:
+                update_fact(user_id, key, "")  # delete value by setting empty string
+
+        # reset memory count
+        set_memory_count(user_id, 0)
+
+        await update.callback_query.edit_message_text("🧠 Memory successfully reset!")
+
+
+    # Load plan + usage
+    plan, used = get_plan_and_usage(user_id)
+
     # Load memory stats
     facts = load_facts(user_id)
     memory_used = int(facts.get("memory_count", "0"))
@@ -791,7 +882,6 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ wrong password. try again.")
             return
     
-    # Step B — user sends their email after unlocking
     if context.user_data.get("awaiting_email"):
         context.user_data["awaiting_email"] = False
     
@@ -819,9 +909,14 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update_fact(user_id, "plan", plan)
         update_fact(user_id, "messages_used", "0")
         set_memory_count(user_id, 0)
+
+        # 🔐 Store email + activation date in facts for /account
+        update_fact(user_id, "email", email)
+        update_fact(user_id, "activation_date", time.strftime("%Y-%m-%d"))
     
         await update.message.reply_text(f"✅ Plan activated: {plan}")
         return
+
 
     # state
     s = get_user_state(user_id)
@@ -1102,6 +1197,8 @@ def main():
     app.add_handler(CommandHandler("reloadstate", reload_state))
     app.add_handler(CommandHandler("setplan", set_plan))
     app.add_handler(CommandHandler("account", account_cmd))
+    app.add_handler(CommandHandler("resetmemory", resetmemory_cmd))
+    app.add_handler(CallbackQueryHandler(resetmemory_callback, pattern="reset_memory_.*"))
 
 
     # messages
