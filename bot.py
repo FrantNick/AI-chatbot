@@ -958,28 +958,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
         await update.message.reply_text(f"✅ Plan activated: {plan}")
         return
-        # ------- MOOD LOGIC -------
-    mood = known.get("mood")
-    mood_time = known.get("mood_timestamp")
-
-    if mood and mood_time:
-        try:
-            mood_age = time.time() - int(mood_time)
-        except:
-            mood_age = 999999
-
-        # mood older than 24h → remove it
-        if mood_age > 86400:
-            update_fact(user_id, "mood", "")
-            return
-        else:
-            if mood in ["tired", "stressed", "sad", "angry"]:
-                sys_prompt += "\n\n# User Mood: The user feels bad today. Be warmer, softer, more supportive."
-            elif mood in ["great", "good", "fine"]:
-                sys_prompt += "\n\n# User Mood: The user feels good today. Be more playful, teasing, energetic."
-
-
-
+       
     # state
     s = get_user_state(user_id)
     # 🔄 Sync the level with Supabase to make sure we don't overwrite manual edits
@@ -1122,6 +1101,25 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if known:
         lines = [f"- {k}: {v}" for k, v in known.items()]
         sys_prompt += "\n\n# Known facts about this user:\n" + "\n".join(lines)
+        # ------- MOOD LOGIC -------
+    mood = known.get("mood")
+    mood_time = known.get("mood_timestamp")
+
+    if mood and mood_time:
+        try:
+            mood_age = time.time() - int(mood_time)
+        except:
+            mood_age = 999999
+
+        # mood older than 24h → delete it
+        if mood_age > 86400:
+            update_fact(user_id, "mood", "")
+        else:
+            if mood in ["tired", "stressed", "sad", "angry"]:
+                sys_prompt += "\n\n# User Mood: The user feels bad today. Be warmer, softer, more supportive."
+            elif mood in ["great", "good", "fine"]:
+                sys_prompt += "\n\n# User Mood: The user feels good today. Be more playful, teasing, energetic."
+
 
     # give the assistant awareness of rating so it can adapt warmth
     sys_prompt += (
