@@ -1264,14 +1264,6 @@ def main():
     app.add_handler(CallbackQueryHandler(resetmemory_callback, pattern="reset_memory_.*"))
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # Daily mood reminder at 20:00 Europe/Bucharest
-    job_queue = app.job_queue
-    job_queue.run_daily(
-        callback=daily_mood_reminder,
-        time=time(20, 0, tzinfo=pytz.timezone("Europe/Bucharest"))
-)
-
-
 
     # messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
