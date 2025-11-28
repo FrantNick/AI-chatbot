@@ -29,7 +29,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackQueryHandler
 
 import pytz
-from datetime import time
+from datetime import time as dt_time
 
 async def send_split_message(update: Update, text: str, min_delay: int = 1, max_delay: int = 3):
     parts = re.split(r'(?<=[.!?])\s+', text)
