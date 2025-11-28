@@ -494,36 +494,21 @@ def bucket_rating(difficulty: str, avg_score: float) -> Tuple[str, int]:
 # =============================
 
 FACT_SYSTEM = """
-Extract ONLY stable, factual, long-term personal information about the user.
-A "fact" must meet ALL of these rules:
+Extract at most ONE factual user detail from the message.
+ONLY stable personal info (age, city, country, school, job, interests, favorite_food, favorite_hobby, relationship_goal, personality).
 
-1. It must be OBJECTIVE (not emotional, not a belief, not a temporary mood).
-2. It must be STABLE over time (age, city, favorite hobbies, personality traits ONLY if explicitly stated as stable).
-3. It must NOT be:
-   - goals related to money or status
-   - emotional pain, trauma, validation-seeking
-   - temporary goals ("I want $10k/m")
-   - abstract statements ("money gives status")
-   - metaphors or jokes
-4. You may extract at most 2 facts per message.
-5. Only use these fact categories:
-
+Return a JSON object with:
 {
-  "name": "",
-  "age": "",
-  "city": "",
-  "country": "",
-  "school": "",
-  "job": "",
-  "favorite_food": "",
-  "favorite_hobby": "",
-  "interests": "",
-  "relationship_goal": "",
-  "personality": ""
+  "fact": "<field>",
+  "value": "<string>",
+  "confidence": 0.0 - 1.0
 }
 
-If no valid facts exist, return {}.
-Return strictly JSON with only recognized fields.
+Rules:
+- If no fact exists: return {"fact": "", "value": "", "confidence": 0.0}
+- Confidence must reflect how certain you are that this is true (not a guess).
+- Do NOT extract temporary emotions, money goals, jokes, or vague statements.
+- NEVER output more than one fact.
 """
 
 
@@ -543,48 +528,30 @@ def extract_facts(user_message: str) -> Dict[str, str]:
         raw = (resp.choices[0].message.content or "{}").strip()
         data = json.loads(raw)
 
-        if not isinstance(data, dict):
+        fact_key = (data.get("fact") or "").strip().lower()
+        fact_value = (data.get("value") or "").strip()
+        confidence = float(data.get("confidence") or 0.0)
+
+        # no valid fact returned
+        if not fact_key or not fact_value:
             return {}
 
-        cleaned = {}
+        # confidence requirement
+        if confidence < 0.7:
+            log.info(f"Discarded low-confidence fact ({confidence}): {fact_key} = {fact_value}")
+            return {}
 
-        # Only accept fields that have non-empty values AND are safe
-        allowed = {
-            "name",
-            "age",
-            "city",
-            "country",
-            "school",
-            "job",
-            "favorite_food",
-            "favorite_hobby",
-            "interests",
-            "relationship_goal",
-            "personality",
-        }
+        # forbidden keys
+        protected = {"plan", "messages_used", "telegram_id", "memory_count"}
+        if fact_key in protected:
+            log.info(f"Attempt to overwrite protected fact: {fact_key}")
+            return {}
 
-        for k, v in data.items():
-            if k not in allowed:
-                continue
+        # length sanity
+        if len(fact_value) < 2 or len(fact_value) > 60:
+            return {}
 
-            val = str(v).strip().lower()
-
-            # Reject garbage values like "money", "validation", etc.
-            banned_keywords = [
-                "money", "validation", "status", "power",
-                "success", "rich", "10k", "$"
-            ]
-
-            if any(b in val for b in banned_keywords):
-                continue
-
-            # Reject absurd "facts"
-            if len(val) < 2 or len(val) > 60:
-                continue
-
-            cleaned[k] = str(v).strip()
-
-        return cleaned
+        return {fact_key: fact_value}
 
     except Exception as e:
         log.warning(f"extract_facts error: {e}")
