@@ -28,6 +28,9 @@ import random
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackQueryHandler
 
+import pytz
+from datetime import time
+
 async def send_split_message(update: Update, text: str, min_delay: int = 1, max_delay: int = 3):
     parts = re.split(r'(?<=[.!?])\s+', text)
     for i, p in enumerate(parts):
@@ -582,6 +585,12 @@ def delete_fact(user_id: int, key: str) -> bool:
         log.exception(f"delete_fact error: {e}")
         return False
 
+def mood_keyboard() -> ReplyKeyboardMarkup:
+    keyboard = [
+        ["great", "good", "fine"],
+        ["tired", "stressed", "sad", "angry"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 # =============================
 # Telegram Handlers
@@ -850,6 +859,30 @@ def refresh_level_from_supabase(user_id: int):
         except ValueError:
             pass
 
+async def mood_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+
+    if user_id not in AUTHORIZED_USERS:
+        await update.message.reply_text("🔒 please unlock first by sending the password.")
+        return
+
+    await update.message.reply_text(
+        "how are you feeling today?", 
+        reply_markup=mood_keyboard()
+    )
+
+    context.user_data["awaiting_mood"] = True
+
+async def daily_mood_reminder(context):
+    for user_id in AUTHORIZED_USERS:
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="hey, how are you feeling today?\ntell me using /mood"
+            )
+        except:
+            pass
+
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_message = (update.message.text or "").strip()
@@ -925,6 +958,26 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
         await update.message.reply_text(f"✅ Plan activated: {plan}")
         return
+        # ------- MOOD LOGIC -------
+    mood = known.get("mood")
+    mood_time = known.get("mood_timestamp")
+
+    if mood and mood_time:
+        try:
+            mood_age = time.time() - int(mood_time)
+        except:
+            mood_age = 999999
+
+        # mood older than 24h → remove it
+        if mood_age > 86400:
+            update_fact(user_id, "mood", "")
+            return
+        else:
+            if mood in ["tired", "stressed", "sad", "angry"]:
+                sys_prompt += "\n\n# User Mood: The user feels bad today. Be warmer, softer, more supportive."
+            elif mood in ["great", "good", "fine"]:
+                sys_prompt += "\n\n# User Mood: The user feels good today. Be more playful, teasing, energetic."
+
 
 
     # state
@@ -1209,6 +1262,15 @@ def main():
     app.add_handler(CommandHandler("account", account_cmd))
     app.add_handler(CommandHandler("resetmemory", resetmemory_cmd))
     app.add_handler(CallbackQueryHandler(resetmemory_callback, pattern="reset_memory_.*"))
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
+
+    # Daily mood reminder at 20:00 Europe/Bucharest
+    job_queue = app.job_queue
+    job_queue.run_daily(
+        callback=daily_mood_reminder,
+        time=time(20, 0, tzinfo=pytz.timezone("Europe/Bucharest"))
+)
+
 
 
     # messages
