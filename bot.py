@@ -1260,7 +1260,6 @@ def main():
     app.add_handler(CommandHandler("account", account_cmd))
     app.add_handler(CommandHandler("resetmemory", resetmemory_cmd))
     app.add_handler(CallbackQueryHandler(resetmemory_callback, pattern="reset_memory_.*"))
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
 
 
     # messages
