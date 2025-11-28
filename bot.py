@@ -782,23 +782,22 @@ async def resetmemory_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = update.callback_query.from_user.id
     data = update.callback_query.data
 
+    await update.callback_query.answer()
+
     if data == "reset_memory_cancel":
-        await update.callback_query.answer()
         await update.callback_query.edit_message_text("❌ Memory reset cancelled.")
         return
 
     if data == "reset_memory_confirm":
-        await update.callback_query.answer()
-
         # load all facts
         facts = load_facts(user_id)
 
-        # delete non-protected facts
+        # delete each fact except protected ones
         for key in facts.keys():
             if key not in PROTECTED_FACTS:
-                update_fact(user_id, key )  # delete value by setting empty string
+                delete_fact(user_id, key)
 
-        # reset memory count
+        # reset counter
         set_memory_count(user_id, 0)
 
         await update.callback_query.edit_message_text("🧠 Memory successfully reset!")
