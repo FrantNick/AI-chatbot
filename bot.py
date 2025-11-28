@@ -777,7 +777,6 @@ async def resetmemory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=keyboard
     )
 
-
 async def resetmemory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.callback_query.from_user.id
     data = update.callback_query.data
@@ -802,36 +801,6 @@ async def resetmemory_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
         await update.callback_query.edit_message_text("🧠 Memory successfully reset!")
 
-
-    # Load plan + usage
-    plan, used = get_plan_and_usage(user_id)
-
-    # Load memory stats
-    facts = load_facts(user_id)
-    memory_used = int(facts.get("memory_count", "0"))
-    memory_limit = MEMORY_LIMITS.get(plan, 10)
-    memory_left = max(0, memory_limit - memory_used)
-
-    # Activation date handling
-    activation_date = facts.get("activation_date")
-    if activation_date:
-        activation_str = activation_date
-    else:
-        activation_str = "unknown"
-
-    # Pretty UI block
-    text = (
-        f"📊 *Your Account Overview*\n\n"
-        f"💼 *Plan:* {plan}\n"
-        f"💬 *Messages Used:* {used}\n"
-        f"🧠 *Memory:* {memory_used}/{memory_limit} (left: {memory_left})\n"
-        f"⏳ *Activation Date:* {activation_str}\n\n"
-        f"🔼 *Upgrade Your Plan*:\n"
-        f"• [Upgrade to PRO](https://mvglistening.sellfy.store/p/sarah-the-coach-pro-plan/?_gl=1*unrsaz*_gcl_aw*R0NMLjE3NjM2NTY0NTguQ2p3S0NBaUFsZnZJQmhBNkVpd0FjRXJweWVfUE1feDdBT3BONlBFNWF3R2dxSXNMYU4wZUs2RFZYZVR6TXBlRE93XzlNQmdzTFdtOVRSb0NwNzhRQXZEX0J3RQ..*_gcl_au*MTU1ODYwMDA0MC4xNzU4MDM5ODkyLjIwNzg0OTIwNjYuMTc2MzY1NjQ2MS4xNzYzNjU2NDcw*_ga*MTQwNzUyNjI5My4xNzU4MDM5ODky*_ga_2CKX0FMHTP*czE3NjQwODY1NDMkbzYkZzAkdDE3NjQwODY1NDMkajYwJGwwJGgw)\n"
-        f"• [Upgrade to ELITE](https://mvglistening.sellfy.store/p/sarah-coach-elite-plan/?_gl=1*unrsaz*_gcl_aw*R0NMLjE3NjM2NTY0NTguQ2p3S0NBaUFsZnZJQmhBNkVpd0FjRXJweWVfUE1feDdBT3BONlBFNWF3R2dxSXNMYU4wZUs2RFZYZVR6TXBlRE93XzlNQmdzTFdtOVRSb0NwNzhRQXZEX0J3RQ..*_gcl_au*MTU1ODYwMDA0MC4xNzU4MDM5ODkyLjIwNzg0OTIwNjYuMTc2MzY1NjQ2MS4xNzYzNjU2NDcw*_ga*MTQwNzUyNjI5My4xNzU4MDM5ODky*_ga_2CKX0FMHTP*czE3NjQwODY1NDMkbzYkZzAkdDE3NjQwODY1NDMkajYwJGwwJGgw)\n"
-    )
-
-    await update.message.reply_text(text, parse_mode="Markdown")
 
 async def send_typing(update: Update, min_delay=1, max_delay=3):
     chat_id = update.message.chat_id
